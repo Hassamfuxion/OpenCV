@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barton Chart Analyzer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button, label.file-input {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        button:hover, label.file-input:hover {
+            background-color: #2980b9;
+        }
+
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .canvas-container {
+            position: relative;
+            margin: 0 auto;
+            max-width: 100%;
+            overflow: auto;
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            background-color: white;
+        }
+
+        .info-panel {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            border-left: 4px solid #3498db;
+        }
+
+        .status {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            button, label.file-input {
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Barton Chart Analyzer</h1>
+    
+    <div class="container">
+        <div class="controls">
+            <label class="file-input" for="fileInput">
+                Upload Chart
+            </label>
+            <input type="file" id="fileInput" accept="image/*">
+            <button id="processBtn" disabled>Process Chart</button>
+            <button id="resetBtn" disabled>Reset</button>
+            <button id="downloadBtn" disabled>Download Result</button>
+        </div>
+
+        <div id="loadingMessage" class="loading" style="display: none;">
+            Loading OpenCV.js... Please wait.
+        </div>
+        
+        <div class="canvas-container">
+            <canvas id="canvasInput" style="display: none;"></canvas>
+            <canvas id="canvasOutput"></canvas>
+        </div>
+        
+        <div class="info-panel">
+            <div id="angleInfo">Angle: -- degrees</div>
+            <div id="statusMessage" class="status"></div>
+        </div>
+    </div>
+
+    <!-- Load OpenCV.js from CDN -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" onerror="onOpenCvError();"></script>
+    
+    <script>
+        // Global variables
+        let inputCanvas = document.getElementById('canvasInput');
+        let outputCanvas = document.getElementById('canvasOutput');
+        let inputCtx = inputCanvas.getContext('2d');
+        let outputCtx = outputCanvas.getContext('2d');
+        let fileInput = document.getElementById('fileInput');
+        let processBtn = document.getElementById('processBtn');
+        let resetBtn = document.getElementById('resetBtn');
+        let downloadBtn = document.getElementById('downloadBtn');
+        let angleInfo = document.getElementById('angleInfo');
+        let statusMessage = document.getElementById('statusMessage');
+        let loadingMessage = document.getElementById('loadingMessage');
+        
+        // Chart parameters
+        let chartCenter = { x: 0, y: 0 };
+        let innerRadius = 0;
+        let outerRadius = 0;
+        let currentAngle = 0;
+        let isDragging = false;
+        let handleRadius = 10;
+        let handlePosition = { x: 0, y: 0 };
+        let originalImage = null;
+        let processedImage = null;
+        
+        // OpenCV ready flag
+        let isOpenCvReady = false;
+        
+        // Show loading message while OpenCV.js loads
+        loadingMessage.style.display = 'block';
+        
+        // Called when OpenCV.js is ready
+        function onOpenCvReady() {
+            isOpenCvReady = true;
+            loadingMessage.style.display = 'none';
+            statusMessage.textContent = 'OpenCV.js loaded successfully. Please upload a Barton Chart.';
+            console.log('OpenCV.js is ready');
+        }
+        
+        // Called if OpenCV.js fails to load
+        function onOpenCvError() {
+            loadingMessage.style.display = 'none';
+            statusMessage.textContent = 'Failed to load OpenCV.js. Please check your internet connection and refresh the page.';
+            statusMessage.style.color = 'red';
+        }
+        
+        // Initialize event listeners
+        function init() {
+            // File input change event
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    loadImage(e.target.files[0]);
+                }
+            });
+            
+            // Process button click event
+            processBtn.addEventListener('click', processImage);
+            
+            // Reset button click event
+            resetBtn.addEventListener('click', resetCanvas);
+            
+            // Download button click event
+            downloadBtn.addEventListener('click', downloadCanvas);
+            
+            // Canvas mouse events for handle dragging
+            outputCanvas.addEventListener('mousedown', startDrag);
+            outputCanvas.addEventListener('mousemove', drag);
+            outputCanvas.addEventListener('mouseup', endDrag);
+            outputCanvas.addEventListener('mouseleave', endDrag);
+            
+            // Touch events for mobile devices
+            outputCanvas.addEventListener('touchstart', handleTouch);
+            outputCanvas.addEventListener('touchmove', handleTouch);
+            outputCanvas.addEventListener('touchend', endDrag);
+        }
+        
+        // Load image from file
+        function loadImage(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                img.onload = function() {
+                    // Resize canvas to match image dimensions
+                    inputCanvas.width = img.width;
+                    inputCanvas.height = img.height;
+                    outputCanvas.width = img.width;
+                    outputCanvas.height = img.height;
+                    
+                    // Draw image on input canvas
+                    inputCtx.drawImage(img, 0, 0);
+                    
+                    // Store original image
+                    originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
+                    
+                    // Draw image on output canvas
+                    outputCtx.drawImage(img, 0, 0);
+                    
+                    // Enable process button
+                    processBtn.disabled = false;
+                    resetBtn.disabled = false;
+                    
+                    statusMessage.textContent = 'Image loaded. Click "Process Chart" to analyze.';
+                };
+                
+                img.src = event.target.result;
+            };
+            
+            reader.readAsDataURL(file);
+        }
+        
+        // Process the image using OpenCV.js
+        function processImage() {
+            if (!isOpenCvReady) {
+                statusMessage.textContent = 'OpenCV.js is not ready yet. Please wait.';
+                return;
+            }
+            
+            statusMessage.textContent = 'Processing image...';
+            
+            try {
+                // Convert canvas to OpenCV Mat
+                let src = cv.imread(inputCanvas);
+                
+                // Convert to grayscale
+                let gray = new cv.Mat();
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                
+                // Apply Gaussian blur to reduce noise
+                let blurred = new cv.Mat();
+                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+                
+                // Apply Canny edge detection
+                let edges = new cv.Mat();
+                cv.Canny(blurred, edges, 50, 150);
+                
+                // Find contours
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+                cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+                
+                // Find circular contours (potential chart boundaries)
+                let circles = [];
+                for (let i = 0; i < contours.size(); ++i) {
+                    let contour = contours.get(i);
+                    let area = cv.contourArea(contour);
+                    let perimeter = cv.arcLength(contour, true);
+                    
+                    // Calculate circularity (4 * π * area / perimeter²)
+                    // Perfect circle has circularity of 1
+                    if (perimeter > 0) {
+                        let circularity = 4 * Math.PI * area / (perimeter * perimeter);
+                        
+                        // Filter for circular shapes
+                        if (circularity > 0.7 && area > 1000) {
+                            let moments = cv.moments(contour);
+                            let cx = moments.m10 / moments.m00;
+                            let cy = moments.m01 / moments.m00;
+                            
+                            // Calculate approximate radius
+                            let radius = Math.sqrt(area / Math.PI);
+                            
+                            circles.push({
+                                center: { x: cx, y: cy },
+                                radius: radius,
+                                area: area
+                            });
+                        }
+                    }
+                    
+                    contour.delete();
+                }
+                
+                // Sort circles by area (largest first)
+                circles.sort((a, b) => b.area - a.area);
+                
+                // Find the center of the chart (usually the center of the largest circle)
+                if (circles.length > 0) {
+                    chartCenter = circles[0].center;
+                    outerRadius = circles[0].radius;
+                    
+                    // Find inner circle (center hole)
+                    for (let i = 1; i < circles.length; i++) {
+                        let distance = Math.sqrt(
+                            Math.pow(circles[i].center.x - chartCenter.x, 2) + 
+                            Math.pow(circles[i].center.y - chartCenter.y, 2)
+                        );
+                        
+                        // If centers are close, this might be the inner circle
+                        if (distance < outerRadius * 0.2) {
+                            innerRadius = circles[i].radius;
+                            break;
+                        }
+                    }
+                    
+                    // If inner radius not found, estimate it
+                    if (innerRadius === 0) {
+                        innerRadius = outerRadius * 0.1; // Estimate inner radius as 10% of outer
+                    }
+                    
+                    // Detect red lines (for finding the measurement angle)
+                    let hsv = new cv.Mat();
+                    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+                    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+                    
+                    // Define range for red color detection
+                    let lowerRed1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 100, 100, 0]);
+                    let upperRed1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [10, 255, 255, 255]);
+                    let lowerRed2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [160, 100, 100, 0]);
+                    let upperRed2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, 255, 255]);
+                    
+                    // Create masks for red color
+                    let mask1 = new cv.Mat();
+                    let mask2 = new cv.Mat();
+                    let redMask = new cv.Mat();
+                    
+                    cv.inRange(hsv, lowerRed1, upperRed1, mask1);
+                    cv.inRange(hsv, lowerRed2, upperRed2, mask2);
+                    cv.add(mask1, mask2, redMask);
+                    
+                    // Apply morphological operations to clean up the mask
+                    let kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+                    let cleanMask = new cv.Mat();
+                    cv.morphologyEx(redMask, cleanMask, cv.MORPH_OPEN, kernel, new cv.Point(-1, -1), 1);
+                    
+                    // Find contours in the red mask
+                    let redContours = new cv.MatVector();
+                    let redHierarchy = new cv.Mat();
+                    cv.findContours(cleanMask, redContours, redHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                    
+                    // Find the most prominent red line
+                    let maxLineLength = 0;
+                    let lineEndPoint = { x: 0, y: 0 };
+                    
+                    for (let i = 0; i < redContours.size(); ++i) {
+                        let contour = redContours.get(i);
+                        let area = cv.contourArea(contour);
+                        
+                        // Skip small contours
+                        if (area < 50) continue;
+                        
+                        // Find the point in the contour furthest from the center
+                        for (let j = 0; j < contour.data32S.length; j += 2) {
+                            let px = contour.data32S[j];
+                            let py = contour.data32S[j + 1];
+                            
+                            let distance = Math.sqrt(
+                                Math.pow(px - chartCenter.x, 2) + 
+                                Math.pow(py - chartCenter.y, 2)
+                            );
+                            
+                            if (distance > maxLineLength && distance < outerRadius * 1.1) {
+                                maxLineLength = distance;
+                                lineEndPoint = { x: px, y: py };
+                            }
+                        }
+                        
+                        contour.delete();
+                    }
+                    
+                    // Calculate angle if a red line was found
+                    if (maxLineLength > 0) {
+                        // Calculate angle (0° at top, clockwise)
+                        let dx = lineEndPoint.x - chartCenter.x;
+                        let dy = lineEndPoint.y - chartCenter.y;
+                        currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+                        
+                        // Set handle position at the end of the detected line
+                        handlePosition = {
+                            x: chartCenter.x + outerRadius * Math.sin(currentAngle * Math.PI / 180),
+                            y: chartCenter.y - outerRadius * Math.cos(currentAngle * Math.PI / 180)
+                        };
+                    } else {
+                        // Default to 0 degrees if no line found
+                        currentAngle = 0;
+                        handlePosition = {
+                            x: chartCenter.x,
+                            y: chartCenter.y - outerRadius
+                        };
+                    }
+                    
+                    // Draw the result on the output canvas
+                    drawResult();
+                    
+                    statusMessage.textContent = 'Chart processed successfully. You can drag the handle to measure angles.';
+                    downloadBtn.disabled = false;
+                    
+                    // Clean up OpenCV objects
+                    lowerRed1.delete();
+                    upperRed1.delete();
+                    lowerRed2.delete();
+                    upperRed2.delete();
+                    mask1.delete();
+                    mask2.delete();
+                    redMask.delete();
+                    cleanMask.delete();
+                    kernel.delete();
+                    redContours.delete();
+                    redHierarchy.delete();
+                } else {
+                    statusMessage.textContent = 'No circular chart detected. Please try another image.';
+                }
+                
+                // Clean up OpenCV objects
+                src.delete();
+                gray.delete();
+                blurred.delete();
+                edges.delete();
+                contours.delete();
+                hierarchy.delete();
+                hsv.delete();
+                
+            } catch (err) {
+                console.error(err);
+                statusMessage.textContent = 'Error processing image: ' + err.message;
+            }
+        }
+        
+        // Draw the result on the output canvas
+        function drawResult() {
+            // Clear canvas
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            
+            // Draw original image
+            outputCtx.putImageData(originalImage, 0, 0);
+            
+            // Draw detected chart boundaries
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Draw center point
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
+            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fill();
+            
+            // Draw measurement line
+            outputCtx.beginPath();
+            outputCtx.moveTo(chartCenter.x, chartCenter.y);
+            outputCtx.lineTo(handlePosition.x, handlePosition.y);
+            outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.lineWidth = 3;
+            outputCtx.stroke();
+            
+            // Draw draggable handle
+            outputCtx.beginPath();
+            outputCtx.arc(handlePosition.x, handlePosition.y, handleRadius, 0, 2 * Math.PI);
+            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fill();
+            outputCtx.strokeStyle = 'white';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Update angle display
+            angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
+        }
+        
+        // Start dragging the handle
+        function startDrag(e) {
+            const rect = outputCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (outputCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (outputCanvas.height / rect.height);
+            
+            // Check if click is within handle
+            const distance = Math.sqrt(
+                Math.pow(x - handlePosition.x, 2) + 
+                Math.pow(y - handlePosition.y, 2)
+            );
+            
+            if (distance <= handleRadius * 1.5) {
+                isDragging = true;
+            }
+        }
+        
+        // Handle touch events
+        function handleTouch(e) {
+            e.preventDefault();
+            
+            if (e.type === 'touchstart') {
+                const rect = outputCanvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = (touch.clientX - rect.left) * (outputCanvas.width / rect.width);
+                const y = (touch.clientY - rect.top) * (outputCanvas.height / rect.height);
+                
+                // Check if touch is within handle
+                const distance = Math.sqrt(
+                    Math.pow(x - handlePosition.x, 2) + 
+                    Math.pow(y - handlePosition.y, 2)
+                );
+                
+                if (distance <= handleRadius * 2) {
+                    isDragging = true;
+                }
+            } else if (e.type === 'touchmove' && isDragging) {
+                const rect = outputCanvas.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = (touch.clientX - rect.left) * (outputCanvas.width / rect.width);
+                const y = (touch.clientY - rect.top) * (outputCanvas.height / rect.height);
+                
+                updateHandlePosition(x, y);
+            }
+        }
+        
+        // Drag the handle
+        function drag(e) {
+            if (isDragging) {
+                const rect = outputCanvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left) * (outputCanvas.width / rect.width);
+                const y = (e.clientY - rect.top) * (outputCanvas.height / rect.height);
+                
+                updateHandlePosition(x, y);
+            }
+        }
+        
+        // Update handle position based on mouse/touch position
+        function updateHandlePosition(x, y) {
+            // Calculate vector from center to mouse position
+            const dx = x - chartCenter.x;
+            const dy = y - chartCenter.y;
+            
+            // Calculate distance from center
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Normalize to outer radius
+            const normalizedX = chartCenter.x + (dx / distance) * outerRadius;
+            const normalizedY = chartCenter.y + (dy / distance) * outerRadius;
+            
+            // Update handle position
+            handlePosition = { x: normalizedX, y: normalizedY };
+            
+            // Calculate angle (0° at top, clockwise)
+            currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+            
+            // Redraw
+            drawResult();
+        }
+        
+        // End dragging
+        function endDrag() {
+            isDragging = false;
+        }
+        
+        // Reset canvas
+        function resetCanvas() {
+            if (originalImage) {
+                outputCtx.putImageData(originalImage, 0, 0);
+                downloadBtn.disabled = true;
+                statusMessage.textContent = 'Canvas reset. Click "Process Chart" to analyze again.';
+            }
+        }
+        
+        // Download canvas as image
+        function downloadCanvas() {
+            const link = document.createElement('a');
+            link.download = 'barton-chart-analysis.png';
+            link.href = outputCanvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
