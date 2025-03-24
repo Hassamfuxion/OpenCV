@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barton Chart Analyzer</title>
+    <title>Barton Chart Analyzer (Simplified)</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -107,7 +107,7 @@
     </style>
 </head>
 <body>
-    <h1>Barton Chart Analyzer</h1>
+    <h1>Barton Chart Analyzer (Simplified)</h1>
     
     <div class="container">
         <div class="controls">
@@ -115,7 +115,7 @@
                 Upload Chart
             </label>
             <input type="file" id="fileInput" accept="image/*">
-            <button id="processBtn" disabled>Process Chart</button>
+            <button id="processBtn" disabled>Analyze Chart</button>
             <button id="resetBtn" disabled>Reset</button>
             <button id="downloadBtn" disabled>Download Result</button>
         </div>
@@ -154,6 +154,7 @@
         
         // Chart parameters
         let chartCenter = { x: 0, y: 0 };
+        let centerRadius = 0;
         let innerRadius = 0;
         let outerRadius = 0;
         let currentAngle = 0;
@@ -195,8 +196,8 @@
             // Process button click event
             processBtn.addEventListener('click', function() {
                 // Use setTimeout to prevent UI freezing
-                statusMessage.textContent = 'Processing image...';
-                setTimeout(processImage, 100);
+                statusMessage.textContent = 'Analyzing chart...';
+                setTimeout(processChart, 100);
             });
             
             // Reset button click event
@@ -245,16 +246,7 @@
                     processBtn.disabled = false;
                     resetBtn.disabled = false;
                     
-                    statusMessage.textContent = 'Image loaded. Click "Process Chart" to analyze.';
-                    
-                    // Set initial chart center to image center
-                    chartCenter = {
-                        x: inputCanvas.width / 2,
-                        y: inputCanvas.height / 2
-                    };
-                    
-                    // Estimate outer radius as 45% of the smaller dimension
-                    outerRadius = Math.min(inputCanvas.width, inputCanvas.height) * 0.45;
+                    statusMessage.textContent = 'Image loaded. Click "Analyze Chart" to begin analysis.';
                 };
                 
                 img.src = event.target.result;
@@ -263,8 +255,8 @@
             reader.readAsDataURL(file);
         }
         
-        // Process the image using OpenCV.js
-        function processImage() {
+        // Process the chart in one step
+        function processChart() {
             if (!isOpenCvReady) {
                 statusMessage.textContent = 'OpenCV.js is not ready yet. Please wait.';
                 return;
@@ -278,221 +270,142 @@
                 const width = src.cols;
                 const height = src.rows;
                 
-                // Convert to grayscale
-                let gray = new cv.Mat();
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                // Step 1: Find the center black circle
+                findCenterCircle(src);
                 
-                // Apply Gaussian blur to reduce noise
-                let blurred = new cv.Mat();
-                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-                
-                // Apply binary threshold to find dark areas (center hole)
-                let threshold = new cv.Mat();
-                cv.threshold(blurred, threshold, 100, 255, cv.THRESH_BINARY_INV);
-                
-                // Find contours
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(threshold, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-                
-                // Find the center hole (small dark circle in the center)
-                let centerFound = false;
-                let maxCenterArea = 0;
-                
-                // First, look for the center hole
-                for (let i = 0; i < contours.size(); ++i) {
-                    let contour = contours.get(i);
-                    let area = cv.contourArea(contour);
-                    let perimeter = cv.arcLength(contour, true);
-                    
-                    // Calculate circularity
-                    if (perimeter > 0) {
-                        let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                        
-                        // Check if this is a small circular shape near the center
-                        if (circularity > 0.7 && area > 100 && area < (width * height * 0.01)) {
-                            let moments = cv.moments(contour);
-                            if (moments.m00 > 0) {
-                                let cx = moments.m10 / moments.m00;
-                                let cy = moments.m01 / moments.m00;
-                                
-                                // Check if it's near the center of the image
-                                let distFromCenter = Math.sqrt(
-                                    Math.pow(cx - width/2, 2) + 
-                                    Math.pow(cy - height/2, 2)
-                                );
-                                
-                                if (distFromCenter < width/4 && area > maxCenterArea) {
-                                    maxCenterArea = area;
-                                    chartCenter = { x: cx, y: cy };
-                                    innerRadius = Math.sqrt(area / Math.PI);
-                                    centerFound = true;
-                                }
-                            }
-                        }
-                    }
-                    
-                    contour.delete();
-                }
-                
-                // If center hole not found, use image center
-                if (!centerFound) {
-                    chartCenter = { x: width / 2, y: height / 2 };
-                    innerRadius = Math.min(width, height) * 0.05; // Estimate
-                }
-                
-                // Now find the outer circle
-                // Apply Canny edge detection
-                let edges = new cv.Mat();
-                cv.Canny(blurred, edges, 50, 150);
-                
-                // Find contours again for the outer circle
-                let outerContours = new cv.MatVector();
-                let outerHierarchy = new cv.Mat();
-                cv.findContours(edges, outerContours, outerHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                // Find the largest circular contour
-                let maxArea = 0;
-                
-                for (let i = 0; i < outerContours.size(); ++i) {
-                    let contour = outerContours.get(i);
-                    let area = cv.contourArea(contour);
-                    let perimeter = cv.arcLength(contour, true);
-                    
-                    if (perimeter > 0) {
-                        let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                        
-                        // Check if this is a large circular shape
-                        if (circularity > 0.6 && area > (width * height * 0.2) && area > maxArea) {
-                            maxArea = area;
-                            
-                            // Calculate approximate radius
-                            outerRadius = Math.sqrt(area / Math.PI);
-                        }
-                    }
-                    
-                    contour.delete();
-                }
-                
-                // If outer radius not found, estimate it
-                if (outerRadius === 0 || outerRadius < innerRadius * 2) {
-                    outerRadius = Math.min(width, height) * 0.45; // Estimate
-                }
-                
-                // Detect red lines (for finding the measurement angle)
-                let hsv = new cv.Mat();
-                cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-                
-                // Define range for red color detection
-                let lowerRed1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 100, 100, 0]);
-                let upperRed1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [10, 255, 255, 255]);
-                let lowerRed2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [160, 100, 100, 0]);
-                let upperRed2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 255, 255, 255]);
-                
-                // Create masks for red color
-                let mask1 = new cv.Mat();
-                let mask2 = new cv.Mat();
-                let redMask = new cv.Mat();
-                
-                cv.inRange(hsv, lowerRed1, upperRed1, mask1);
-                cv.inRange(hsv, lowerRed2, upperRed2, mask2);
-                cv.add(mask1, mask2, redMask);
-                
-                // Apply morphological operations to clean up the mask
-                let kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-                let cleanMask = new cv.Mat();
-                cv.morphologyEx(redMask, cleanMask, cv.MORPH_OPEN, kernel, new cv.Point(-1, -1), 1);
-                
-                // Find contours in the red mask
-                let redContours = new cv.MatVector();
-                let redHierarchy = new cv.Mat();
-                cv.findContours(cleanMask, redContours, redHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                // Find the most prominent red line
-                let maxLineLength = 0;
-                let lineEndPoint = { x: 0, y: 0 };
-                
-                for (let i = 0; i < redContours.size(); ++i) {
-                    let contour = redContours.get(i);
-                    let area = cv.contourArea(contour);
-                    
-                    // Skip small contours
-                    if (area < 50) continue;
-                    
-                    // Find the point in the contour furthest from the center
-                    for (let j = 0; j < contour.data32S.length; j += 2) {
-                        let px = contour.data32S[j];
-                        let py = contour.data32S[j + 1];
-                        
-                        let distance = Math.sqrt(
-                            Math.pow(px - chartCenter.x, 2) + 
-                            Math.pow(py - chartCenter.y, 2)
-                        );
-                        
-                        if (distance > maxLineLength && distance < outerRadius * 1.1) {
-                            maxLineLength = distance;
-                            lineEndPoint = { x: px, y: py };
-                        }
-                    }
-                    
-                    contour.delete();
-                }
-                
-                // Calculate angle if a red line was found
-                if (maxLineLength > 0) {
-                    // Calculate angle (0° at top, clockwise)
-                    let dx = lineEndPoint.x - chartCenter.x;
-                    let dy = lineEndPoint.y - chartCenter.y;
-                    currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-                    
-                    // Set handle position at the end of the detected line
-                    handlePosition = {
-                        x: chartCenter.x + outerRadius * Math.sin(currentAngle * Math.PI / 180),
-                        y: chartCenter.y - outerRadius * Math.cos(currentAngle * Math.PI / 180)
-                    };
-                } else {
-                    // Default to 0 degrees if no line found
-                    currentAngle = 0;
-                    handlePosition = {
-                        x: chartCenter.x,
-                        y: chartCenter.y - outerRadius
-                    };
-                }
+                // Step 2: Estimate inner and outer circles
+                estimateCircles(width, height);
                 
                 // Draw the result on the output canvas
                 drawResult();
                 
-                statusMessage.textContent = 'Chart processed successfully. You can drag the handle to measure angles.';
+                // Enable download button
                 downloadBtn.disabled = false;
                 
                 // Clean up OpenCV objects
                 src.delete();
-                gray.delete();
-                blurred.delete();
-                threshold.delete();
-                contours.delete();
-                hierarchy.delete();
-                edges.delete();
-                outerContours.delete();
-                outerHierarchy.delete();
-                hsv.delete();
-                lowerRed1.delete();
-                upperRed1.delete();
-                lowerRed2.delete();
-                upperRed2.delete();
-                mask1.delete();
-                mask2.delete();
-                redMask.delete();
-                cleanMask.delete();
-                kernel.delete();
-                redContours.delete();
-                redHierarchy.delete();
+                
+                statusMessage.textContent = 'Chart analysis complete! You can now adjust the angle or download the result.';
                 
             } catch (err) {
-                console.error(err);
-                statusMessage.textContent = 'Error processing image: ' + err.message;
+                console.error("Error processing chart:", err);
+                statusMessage.textContent = `Error analyzing chart: ${err.message}. Try again or reset.`;
             }
+        }
+        
+        // Find the center black circle
+        function findCenterCircle(src) {
+            // Convert to grayscale
+            let gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+            
+            // Apply Gaussian blur to reduce noise
+            let blurred = new cv.Mat();
+            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+            
+            // Apply binary threshold to find dark areas (center hole)
+            let threshold = new cv.Mat();
+            cv.threshold(blurred, threshold, 70, 255, cv.THRESH_BINARY_INV);
+            
+            // Find contours
+            let contours = new cv.MatVector();
+            let hierarchy = new cv.Mat();
+            cv.findContours(threshold, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+            
+            // Find the center hole (small dark circle in the center)
+            let centerFound = false;
+            let bestCircularity = 0;
+            let bestContourIndex = -1;
+            let bestArea = 0;
+            
+            const width = src.cols;
+            const height = src.rows;
+            
+            // First, look for the center hole
+            for (let i = 0; i < contours.size(); ++i) {
+                let contour = contours.get(i);
+                let area = cv.contourArea(contour);
+                let perimeter = cv.arcLength(contour, true);
+                
+                // Calculate circularity
+                if (perimeter > 0) {
+                    let circularity = 4 * Math.PI * area / (perimeter * perimeter);
+                    
+                    // Check if this is a small circular shape near the center
+                    if (circularity > 0.7 && area > 100 && area < (width * height * 0.02)) {
+                        // Calculate center of this contour
+                        let moments = cv.moments(contour);
+                        if (moments.m00 > 0) {
+                            let cx = moments.m10 / moments.m00;
+                            let cy = moments.m01 / moments.m00;
+                            
+                            // Check if it's near the center of the image
+                            let distFromCenter = Math.sqrt(
+                                Math.pow(cx - width/2, 2) + 
+                                Math.pow(cy - height/2, 2)
+                            );
+                            
+                            // If it's near the center and more circular than previous best
+                            if (distFromCenter < width/3 && circularity > bestCircularity) {
+                                bestCircularity = circularity;
+                                bestContourIndex = i;
+                                bestArea = area;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // If we found a good center circle
+            if (bestContourIndex >= 0) {
+                let contour = contours.get(bestContourIndex);
+                let moments = cv.moments(contour);
+                
+                if (moments.m00 > 0) {
+                    let cx = moments.m10 / moments.m00;
+                    let cy = moments.m01 / moments.m00;
+                    
+                    chartCenter = { x: cx, y: cy };
+                    centerRadius = Math.sqrt(bestArea / Math.PI);
+                    centerFound = true;
+                }
+            }
+            
+            // If center hole not found, use image center
+            if (!centerFound) {
+                chartCenter = { x: width / 2, y: height / 2 };
+                centerRadius = Math.min(width, height) * 0.05; // Estimate
+            }
+            
+            // Clean up OpenCV objects
+            gray.delete();
+            blurred.delete();
+            threshold.delete();
+            contours.delete();
+            hierarchy.delete();
+        }
+        
+        // Estimate inner and outer circles based on center circle
+        function estimateCircles(width, height) {
+            // Estimate inner circle (0%) based on center circle
+            innerRadius = centerRadius * 3;
+            
+            // Estimate outer circle (100%) based on inner circle
+            outerRadius = innerRadius * 2.5;
+            
+            // Make sure outer radius isn't too large
+            if (outerRadius > Math.min(width, height) / 2) {
+                outerRadius = Math.min(width, height) / 2 - 10;
+            }
+            
+            // Initialize handle position at 0 degrees (top)
+            handlePosition = {
+                x: chartCenter.x,
+                y: chartCenter.y - outerRadius
+            };
+            
+            // Initialize angle
+            currentAngle = 0;
         }
         
         // Draw the result on the output canvas
@@ -503,24 +416,32 @@
             // Draw original image
             outputCtx.putImageData(originalImage, 0, 0);
             
-            // Draw detected chart boundaries
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
-            
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
-            
             // Draw center point
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fill();
+            
+            // Draw center circle
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, centerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Draw inner circle (0%)
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Draw outer circle (100%)
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
             
             // Draw measurement line
             outputCtx.beginPath();
@@ -539,8 +460,106 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
+            // Add text labels
+            outputCtx.font = '16px Arial';
+            outputCtx.textAlign = 'center';
+            
+            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fillText('Center', chartCenter.x, chartCenter.y - centerRadius - 10);
+            
+            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.fillText('0% Circle', chartCenter.x, chartCenter.y - innerRadius - 10);
+            
+            outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.fillText('100% Circle', chartCenter.x, chartCenter.y - outerRadius - 10);
+            
             // Update angle display
             angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
+        }
+        
+        // Apply tilt correction based on current angle
+        function applyTiltCorrection() {
+            try {
+                // Convert canvas to OpenCV Mat
+                let src = cv.imread(inputCanvas);
+                
+                // Get image dimensions
+                const width = src.cols;
+                const height = src.rows;
+                
+                // Create rotation matrix
+                let rotationMatrix = cv.Mat.zeros(2, 3, cv.CV_32F);
+                let center = new cv.Point(chartCenter.x, chartCenter.y);
+                
+                // Get rotation matrix for rotating the image around the center
+                rotationMatrix = cv.getRotationMatrix2D(center, -currentAngle, 1.0);
+                
+                // Apply affine transformation
+                let correctedImage = new cv.Mat();
+                let dsize = new cv.Size(width, height);
+                cv.warpAffine(src, correctedImage, rotationMatrix, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
+                
+                // Draw the result on the output canvas
+                cv.imshow('canvasOutput', correctedImage);
+                
+                // Draw circles and labels on the corrected image
+                drawCirclesOnCanvas();
+                
+                statusMessage.textContent = `Tilt corrected by ${currentAngle.toFixed(1)}°.`;
+                
+                // Clean up OpenCV objects
+                src.delete();
+                rotationMatrix.delete();
+                correctedImage.delete();
+                
+            } catch (err) {
+                console.error(err);
+                statusMessage.textContent = 'Error applying tilt correction: ' + err.message;
+            }
+        }
+        
+        // Draw circles and labels on the canvas
+        function drawCirclesOnCanvas() {
+            // Draw center point
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
+            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fill();
+            
+            // Draw center circle
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, centerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Draw inner circle (0%)
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Draw outer circle (100%)
+            outputCtx.beginPath();
+            outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
+            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
+            
+            // Add text labels
+            outputCtx.font = '16px Arial';
+            outputCtx.textAlign = 'center';
+            
+            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.fillText('0% Circle', chartCenter.x, chartCenter.y - innerRadius - 10);
+            
+            outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.fillText('100% Circle', chartCenter.x, chartCenter.y - outerRadius - 10);
+            
+            // Add tilt correction info
+            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fillText(`Tilt Corrected: ${currentAngle.toFixed(1)}°`, chartCenter.x, chartCenter.y + outerRadius + 20);
         }
         
         // Start dragging the handle
@@ -609,6 +628,8 @@
             // Calculate distance from center
             const distance = Math.sqrt(dx * dx + dy * dy);
             
+            if (distance === 0) return; // Avoid division by zero
+            
             // Normalize to outer radius
             const normalizedX = chartCenter.x + (dx / distance) * outerRadius;
             const normalizedY = chartCenter.y + (dy / distance) * outerRadius;
@@ -619,21 +640,32 @@
             // Calculate angle (0° at top, clockwise)
             currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
             
-            // Redraw
+            // Redraw the result
             drawResult();
+            
+            // Apply tilt correction if angle changes significantly
+            if (Math.abs(currentAngle - 0) > 5) {
+                applyTiltCorrection();
+            }
         }
         
         // End dragging
         function endDrag() {
-            isDragging = false;
+            if (isDragging) {
+                isDragging = false;
+                // Apply tilt correction when handle is released
+                applyTiltCorrection();
+            }
         }
         
         // Reset canvas
         function resetCanvas() {
             if (originalImage) {
+                outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 outputCtx.putImageData(originalImage, 0, 0);
                 downloadBtn.disabled = true;
-                statusMessage.textContent = 'Canvas reset. Click "Process Chart" to analyze again.';
+                statusMessage.textContent = 'Canvas reset. Click "Analyze Chart" to begin analysis again.';
+                angleInfo.textContent = 'Angle: -- degrees';
             }
         }
         
