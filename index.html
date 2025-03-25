@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barton Chart Analyzer (Simplified)</title>
+    <title>Barton Chart Analyzer (Corrected)</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -94,6 +94,47 @@
             color: #7f8c8d;
         }
 
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+        }
+
+        .slider-container {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-label {
+            min-width: 120px;
+        }
+
+        input[type="range"] {
+            flex-grow: 1;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -107,7 +148,7 @@
     </style>
 </head>
 <body>
-    <h1>Barton Chart Analyzer (Simplified)</h1>
+    <h1>Barton Chart Analyzer (Corrected)</h1>
     
     <div class="container">
         <div class="controls">
@@ -118,6 +159,34 @@
             <button id="processBtn" disabled>Analyze Chart</button>
             <button id="resetBtn" disabled>Reset</button>
             <button id="downloadBtn" disabled>Download Result</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: rgba(255, 0, 0, 0.8);"></div>
+                <span>Center/Measurement</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: rgba(0, 0, 255, 0.8);"></div>
+                <span>0% (Start)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: rgba(0, 255, 0, 0.8);"></div>
+                <span>100% (End)</span>
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-row">
+                <span class="slider-label">0% Circle (Blue):</span>
+                <input type="range" id="innerRadiusSlider" min="1.05" max="1.5" step="0.05" value="1.1">
+                <span id="innerRadiusValue">1.1x</span>
+            </div>
+            <div class="slider-row">
+                <span class="slider-label">100% Circle (Green):</span>
+                <input type="range" id="outerRadiusSlider" min="6.0" max="10.0" step="0.1" value="8.0">
+                <span id="outerRadiusValue">8.0x</span>
+            </div>
         </div>
 
         <div id="loadingMessage" class="loading" style="display: none;">
@@ -151,12 +220,18 @@
         let angleInfo = document.getElementById('angleInfo');
         let statusMessage = document.getElementById('statusMessage');
         let loadingMessage = document.getElementById('loadingMessage');
+        let innerRadiusSlider = document.getElementById('innerRadiusSlider');
+        let outerRadiusSlider = document.getElementById('outerRadiusSlider');
+        let innerRadiusValue = document.getElementById('innerRadiusValue');
+        let outerRadiusValue = document.getElementById('outerRadiusValue');
         
         // Chart parameters
         let chartCenter = { x: 0, y: 0 };
         let centerRadius = 0;
-        let innerRadius = 0;
-        let outerRadius = 0;
+        let innerRadius = 0;  // 0% - Start of graph (BLUE)
+        let outerRadius = 0;  // 100% - End of graph (GREEN)
+        let innerRadiusMultiplier = 1.1; // Default: 0% circle is 1.1x the center radius (very close)
+        let outerRadiusMultiplier = 8.0; // Default: 100% circle is 8.0x the center radius (outer edge)
         let currentAngle = 0;
         let isDragging = false;
         let handleRadius = 10;
@@ -216,6 +291,39 @@
             outputCanvas.addEventListener('touchstart', handleTouch);
             outputCanvas.addEventListener('touchmove', handleTouch);
             outputCanvas.addEventListener('touchend', endDrag);
+            
+            // Slider events
+            innerRadiusSlider.addEventListener('input', function() {
+                innerRadiusMultiplier = parseFloat(this.value);
+                innerRadiusValue.textContent = innerRadiusMultiplier.toFixed(2) + 'x';
+                if (originalImage) {
+                    updateCircles();
+                }
+            });
+            
+            outerRadiusSlider.addEventListener('input', function() {
+                outerRadiusMultiplier = parseFloat(this.value);
+                outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
+                if (originalImage) {
+                    updateCircles();
+                }
+            });
+        }
+        
+        // Update circles based on slider values
+        function updateCircles() {
+            if (centerRadius > 0) {
+                innerRadius = centerRadius * innerRadiusMultiplier;
+                outerRadius = centerRadius * outerRadiusMultiplier;
+                
+                // Update handle position
+                handlePosition = {
+                    x: chartCenter.x,
+                    y: chartCenter.y - outerRadius
+                };
+                
+                drawResult();
+            }
         }
         
         // Load image from file
@@ -273,7 +381,7 @@
                 // Step 1: Find the center black circle
                 findCenterCircle(src);
                 
-                // Step 2: Estimate inner and outer circles
+                // Step 2: Estimate inner (0%) and outer (100%) circles
                 estimateCircles(width, height);
                 
                 // Draw the result on the output canvas
@@ -285,7 +393,7 @@
                 // Clean up OpenCV objects
                 src.delete();
                 
-                statusMessage.textContent = 'Chart analysis complete! You can now adjust the angle or download the result.';
+                statusMessage.textContent = 'Chart analysis complete! Adjust the circles using the sliders if needed.';
                 
             } catch (err) {
                 console.error("Error processing chart:", err);
@@ -305,7 +413,7 @@
             
             // Apply binary threshold to find dark areas (center hole)
             let threshold = new cv.Mat();
-            cv.threshold(blurred, threshold, 70, 255, cv.THRESH_BINARY_INV);
+            cv.threshold(blurred, threshold, 50, 255, cv.THRESH_BINARY_INV);
             
             // Find contours
             let contours = new cv.MatVector();
@@ -346,7 +454,7 @@
                             );
                             
                             // If it's near the center and more circular than previous best
-                            if (distFromCenter < width/3 && circularity > bestCircularity) {
+                            if (distFromCenter < width/4 && circularity > bestCircularity) {
                                 bestCircularity = circularity;
                                 bestContourIndex = i;
                                 bestArea = area;
@@ -374,7 +482,7 @@
             // If center hole not found, use image center
             if (!centerFound) {
                 chartCenter = { x: width / 2, y: height / 2 };
-                centerRadius = Math.min(width, height) * 0.05; // Estimate
+                centerRadius = Math.min(width, height) * 0.03; // Estimate
             }
             
             // Clean up OpenCV objects
@@ -385,13 +493,15 @@
             hierarchy.delete();
         }
         
-        // Estimate inner and outer circles based on center circle
+        // Estimate inner (0%) and outer (100%) circles based on center circle
         function estimateCircles(width, height) {
-            // Estimate inner circle (0%) based on center circle
-            innerRadius = centerRadius * 3;
+            // Estimate inner circle (0% - Start) based on center circle - BLUE
+            // Now very close to the center black circle (just outside it)
+            innerRadius = centerRadius * innerRadiusMultiplier;
             
-            // Estimate outer circle (100%) based on inner circle
-            outerRadius = innerRadius * 2.5;
+            // Estimate outer circle (100% - End) based on center radius - GREEN
+            // This should correspond to the outer edge of the chart
+            outerRadius = centerRadius * outerRadiusMultiplier;
             
             // Make sure outer radius isn't too large
             if (outerRadius > Math.min(width, height) / 2) {
@@ -429,17 +539,17 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw inner circle (0%)
+            // Draw inner circle (0% - Start) - BLUE
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw outer circle (100%)
+            // Draw outer circle (100% - End) - GREEN
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
@@ -467,11 +577,11 @@
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fillText('Center', chartCenter.x, chartCenter.y - centerRadius - 10);
             
-            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-            outputCtx.fillText('0% Circle', chartCenter.x, chartCenter.y - innerRadius - 10);
-            
             outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
-            outputCtx.fillText('100% Circle', chartCenter.x, chartCenter.y - outerRadius - 10);
+            outputCtx.fillText('0% (Start)', chartCenter.x, chartCenter.y - innerRadius - 10);
+            
+            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.fillText('100% (End)', chartCenter.x, chartCenter.y - outerRadius - 10);
             
             // Update angle display
             angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
@@ -533,17 +643,17 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw inner circle (0%)
+            // Draw inner circle (0% - Start) - BLUE
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw outer circle (100%)
+            // Draw outer circle (100% - End) - GREEN
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
@@ -551,11 +661,11 @@
             outputCtx.font = '16px Arial';
             outputCtx.textAlign = 'center';
             
-            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-            outputCtx.fillText('0% Circle', chartCenter.x, chartCenter.y - innerRadius - 10);
-            
             outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
-            outputCtx.fillText('100% Circle', chartCenter.x, chartCenter.y - outerRadius - 10);
+            outputCtx.fillText('0% (Start)', chartCenter.x, chartCenter.y - innerRadius - 10);
+            
+            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+            outputCtx.fillText('100% (End)', chartCenter.x, chartCenter.y - outerRadius - 10);
             
             // Add tilt correction info
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
@@ -662,6 +772,7 @@
         function resetCanvas() {
             if (originalImage) {
                 outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+                outputCtx.putImageData(originalImage, 0,   0, outputCanvas.width, outputCanvas.height);
                 outputCtx.putImageData(originalImage, 0, 0);
                 downloadBtn.disabled = true;
                 statusMessage.textContent = 'Canvas reset. Click "Analyze Chart" to begin analysis again.';
