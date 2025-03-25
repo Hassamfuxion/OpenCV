@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Barton Chart Analyzer (Corrected)</title>
+    <title>Barton Chart Analyzer</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -13,12 +13,10 @@
             background-color: #f5f5f5;
             color: #333;
         }
-
         h1 {
             text-align: center;
             color: #2c3e50;
         }
-
         .container {
             display: flex;
             flex-direction: column;
@@ -28,14 +26,12 @@
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
-
         .controls {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-bottom: 20px;
         }
-
         button, label.file-input {
             background-color: #3498db;
             color: white;
@@ -46,34 +42,28 @@
             font-size: 16px;
             transition: background-color 0.3s;
         }
-
         button:hover, label.file-input:hover {
             background-color: #2980b9;
         }
-
         button:disabled {
             background-color: #95a5a6;
             cursor: not-allowed;
         }
-
         #fileInput {
             display: none;
         }
-
         .canvas-container {
             position: relative;
             margin: 0 auto;
             max-width: 100%;
             overflow: auto;
         }
-
         canvas {
             display: block;
             margin: 0 auto;
             border: 1px solid #ddd;
             background-color: white;
         }
-
         .info-panel {
             background-color: #f8f9fa;
             padding: 15px;
@@ -81,19 +71,16 @@
             margin-top: 20px;
             border-left: 4px solid #3498db;
         }
-
         .status {
             margin-top: 10px;
             font-weight: bold;
         }
-
         .loading {
             text-align: center;
             margin: 20px 0;
             font-style: italic;
             color: #7f8c8d;
         }
-
         .legend {
             display: flex;
             flex-wrap: wrap;
@@ -101,45 +88,64 @@
             margin-top: 10px;
             justify-content: center;
         }
-
         .legend-item {
             display: flex;
             align-items: center;
             gap: 5px;
         }
-
         .legend-color {
             width: 15px;
             height: 15px;
             border-radius: 50%;
         }
-
         .slider-container {
             margin-top: 15px;
             display: flex;
             flex-direction: column;
             gap: 10px;
         }
-
         .slider-row {
             display: flex;
             align-items: center;
             gap: 10px;
         }
-
         .slider-label {
             min-width: 120px;
         }
-
         input[type="range"] {
             flex-grow: 1;
+            height: 10px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
         }
-
+        .slider-value {
+            min-width: 50px;
+            text-align: right;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        .debug-info {
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 100px;
+            overflow-y: auto;
+            display: none;
+        }
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
             }
-            
             button, label.file-input {
                 padding: 8px 12px;
                 font-size: 14px;
@@ -148,8 +154,7 @@
     </style>
 </head>
 <body>
-    <h1>Barton Chart Analyzer (Corrected)</h1>
-    
+    <h1>Barton Chart Analyzer</h1>
     <div class="container">
         <div class="controls">
             <label class="file-input" for="fileInput">
@@ -159,8 +164,8 @@
             <button id="processBtn" disabled>Analyze Chart</button>
             <button id="resetBtn" disabled>Reset</button>
             <button id="downloadBtn" disabled>Download Result</button>
+            <button id="debugBtn">Toggle Debug</button>
         </div>
-
         <div class="legend">
             <div class="legend-item">
                 <div class="legend-color" style="background-color: rgba(255, 0, 0, 0.8);"></div>
@@ -175,38 +180,33 @@
                 <span>100% (End)</span>
             </div>
         </div>
-
         <div class="slider-container">
             <div class="slider-row">
                 <span class="slider-label">0% Circle (Green):</span>
-                <input type="range" id="innerRadiusSlider" min="1.05" max="1.5" step="0.05" value="1.1">
-                <span id="innerRadiusValue">1.1x</span>
+                <input type="range" id="innerRadiusSlider" min="1.05" max="100.0" step="0.05" value="1.25">
+                <span id="innerRadiusValue" class="slider-value">1.25x</span>
             </div>
             <div class="slider-row">
                 <span class="slider-label">100% Circle (Blue):</span>
-                <input type="range" id="outerRadiusSlider" min="3.0" max="6.0" step="0.1" value="4.0">
-                <span id="outerRadiusValue">4.0x</span>
+                <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="6.0">
+                <span id="outerRadiusValue" class="slider-value">6.0x</span>
             </div>
         </div>
-
         <div id="loadingMessage" class="loading" style="display: none;">
             Loading OpenCV.js... Please wait.
         </div>
-        
         <div class="canvas-container">
             <canvas id="canvasInput" style="display: none;"></canvas>
             <canvas id="canvasOutput"></canvas>
         </div>
-        
         <div class="info-panel">
             <div id="angleInfo">Angle: -- degrees</div>
             <div id="statusMessage" class="status"></div>
+            <div id="debugInfo" class="debug-info"></div>
         </div>
     </div>
-
     <!-- Load OpenCV.js from CDN -->
     <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" onerror="onOpenCvError();"></script>
-    
     <script>
         // Global variables
         let inputCanvas = document.getElementById('canvasInput');
@@ -217,81 +217,96 @@
         let processBtn = document.getElementById('processBtn');
         let resetBtn = document.getElementById('resetBtn');
         let downloadBtn = document.getElementById('downloadBtn');
+        let debugBtn = document.getElementById('debugBtn');
         let angleInfo = document.getElementById('angleInfo');
         let statusMessage = document.getElementById('statusMessage');
         let loadingMessage = document.getElementById('loadingMessage');
+        let debugInfo = document.getElementById('debugInfo');
         let innerRadiusSlider = document.getElementById('innerRadiusSlider');
         let outerRadiusSlider = document.getElementById('outerRadiusSlider');
         let innerRadiusValue = document.getElementById('innerRadiusValue');
         let outerRadiusValue = document.getElementById('outerRadiusValue');
-        
         // Chart parameters
         let chartCenter = { x: 0, y: 0 };
         let centerRadius = 0;
         let innerRadius = 0;  // 0% - Start of graph (GREEN)
         let outerRadius = 0;  // 100% - End of graph (BLUE)
-        let innerRadiusMultiplier = 1.1; // Default: 0% circle is 1.1x the center radius (very close)
-        let outerRadiusMultiplier = 4.0; // Default: 100% circle is 4.0x the center radius (where data lines are)
+        let innerRadiusMultiplier = 1.25; // Default: 0% circle is 1.25x the center radius
+        let outerRadiusMultiplier = 6.0; // Default: 100% circle is 6.0x the center radius
         let currentAngle = 0;
         let isDragging = false;
         let handleRadius = 10;
         let handlePosition = { x: 0, y: 0 };
         let originalImage = null;
-        
         // OpenCV ready flag
         let isOpenCvReady = false;
-        
+        let isDebugMode = false;
         // Show loading message while OpenCV.js loads
         loadingMessage.style.display = 'block';
-        
+        // Debug logging function
+        function logDebug(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            console.log(logMessage);
+            if (debugInfo) {
+                debugInfo.innerHTML += logMessage + '<br>';
+                debugInfo.scrollTop = debugInfo.scrollHeight;
+            }
+        }
         // Called when OpenCV.js is ready
         function onOpenCvReady() {
             isOpenCvReady = true;
             loadingMessage.style.display = 'none';
             statusMessage.textContent = 'OpenCV.js loaded successfully. Please upload a Barton Chart.';
-            console.log('OpenCV.js is ready');
+            statusMessage.className = 'status success';
+            logDebug('OpenCV.js is ready');
         }
-        
         // Called if OpenCV.js fails to load
         function onOpenCvError() {
             loadingMessage.style.display = 'none';
             statusMessage.textContent = 'Failed to load OpenCV.js. Please check your internet connection and refresh the page.';
-            statusMessage.style.color = 'red';
+            statusMessage.className = 'status error';
+            logDebug('Failed to load OpenCV.js');
         }
-        
         // Initialize event listeners
         function init() {
             // File input change event
             fileInput.addEventListener('change', function(e) {
+                logDebug('File input change event triggered');
                 if (e.target.files.length > 0) {
-                    loadImage(e.target.files[0]);
+                    const file = e.target.files[0];
+                    logDebug(`Selected file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
+                    loadImage(file);
+                } else {
+                    logDebug('No file selected');
                 }
             });
-            
             // Process button click event
             processBtn.addEventListener('click', function() {
                 // Use setTimeout to prevent UI freezing
                 statusMessage.textContent = 'Analyzing chart...';
+                logDebug('Process button clicked');
                 setTimeout(processChart, 100);
             });
-            
             // Reset button click event
             resetBtn.addEventListener('click', resetCanvas);
-            
             // Download button click event
             downloadBtn.addEventListener('click', downloadCanvas);
-            
+            // Debug button click event
+            debugBtn.addEventListener('click', function() {
+                isDebugMode = !isDebugMode;
+                debugInfo.style.display = isDebugMode ? 'block' : 'none';
+                logDebug(`Debug mode ${isDebugMode ? 'enabled' : 'disabled'}`);
+            });
             // Canvas mouse events for handle dragging
             outputCanvas.addEventListener('mousedown', startDrag);
             outputCanvas.addEventListener('mousemove', drag);
             outputCanvas.addEventListener('mouseup', endDrag);
             outputCanvas.addEventListener('mouseleave', endDrag);
-            
             // Touch events for mobile devices
             outputCanvas.addEventListener('touchstart', handleTouch);
             outputCanvas.addEventListener('touchmove', handleTouch);
             outputCanvas.addEventListener('touchend', endDrag);
-            
             // Slider events
             innerRadiusSlider.addEventListener('input', function() {
                 innerRadiusMultiplier = parseFloat(this.value);
@@ -300,7 +315,6 @@
                     updateCircles();
                 }
             });
-            
             outerRadiusSlider.addEventListener('input', function() {
                 outerRadiusMultiplier = parseFloat(this.value);
                 outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
@@ -308,137 +322,196 @@
                     updateCircles();
                 }
             });
+            // Initialize debug info
+            logDebug('Application initialized');
+            // Try to load the example image
+            tryLoadExampleImage();
         }
-        
+        // Try to load the example image
+        function tryLoadExampleImage() {
+            try {
+                const exampleImg = new Image();
+                exampleImg.crossOrigin = 'anonymous';
+                exampleImg.onload = function() {
+                    logDebug('Example image loaded successfully');
+                    // Resize canvas to match image dimensions
+                    inputCanvas.width = exampleImg.width;
+                    inputCanvas.height = exampleImg.height;
+                    outputCanvas.width = exampleImg.width;
+                    outputCanvas.height = exampleImg.height;
+                    // Draw image on input canvas
+                    inputCtx.drawImage(exampleImg, 0, 0);
+                    // Store original image
+                    originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
+                    // Draw image on output canvas
+                    outputCtx.drawImage(exampleImg, 0, 0);
+                    // Enable process button
+                    processBtn.disabled = false;
+                    resetBtn.disabled = false;
+                    statusMessage.textContent = 'Example image loaded. Click "Analyze Chart" to begin analysis.';
+                    statusMessage.className = 'status success';
+                };
+                exampleImg.onerror = function() {
+                    logDebug('Failed to load example image');
+                };
+                // Set the source to the example image URL
+                exampleImg.src = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-qK9wrpvMxfQcHxGQAUzQiBRqrSBNq6.png';
+            } catch (err) {
+                logDebug(`Error loading example image: ${err.message}`);
+            }
+        }
         // Update circles based on slider values
         function updateCircles() {
             if (centerRadius > 0) {
                 innerRadius = centerRadius * innerRadiusMultiplier;
                 outerRadius = centerRadius * outerRadiusMultiplier;
-                
                 // Update handle position
                 handlePosition = {
                     x: chartCenter.x,
                     y: chartCenter.y - outerRadius
                 };
-                
                 drawResult();
+                logDebug(`Circles updated: inner=${innerRadius.toFixed(2)}, outer=${outerRadius.toFixed(2)}`);
             }
         }
-        
         // Load image from file
         function loadImage(file) {
             const reader = new FileReader();
-            
             reader.onload = function(event) {
+                logDebug('FileReader onload event triggered');
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
-                
                 img.onload = function() {
-                    // Resize canvas to match image dimensions
-                    inputCanvas.width = img.width;
-                    inputCanvas.height = img.height;
-                    outputCanvas.width = img.width;
-                    outputCanvas.height = img.height;
-                    
-                    // Draw image on input canvas
-                    inputCtx.drawImage(img, 0, 0);
-                    
-                    // Store original image
-                    originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
-                    
-                    // Draw image on output canvas
-                    outputCtx.drawImage(img, 0, 0);
-                    
-                    // Enable process button
-                    processBtn.disabled = false;
-                    resetBtn.disabled = false;
-                    
-                    statusMessage.textContent = 'Image loaded. Click "Analyze Chart" to begin analysis.';
+                    logDebug(`Image loaded: ${img.width}x${img.height}`);
+                    try {
+                        // Resize canvas to match image dimensions
+                        inputCanvas.width = img.width;
+                        inputCanvas.height = img.height;
+                        outputCanvas.width = img.width;
+                        outputCanvas.height = img.height;
+                        logDebug(`Canvas resized to ${inputCanvas.width}x${inputCanvas.height}`);
+                        // Draw image on input canvas
+                        inputCtx.drawImage(img, 0, 0);
+                        logDebug('Image drawn on input canvas');
+                        // Store original image
+                        originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
+                        logDebug('Original image data stored');
+                        // Draw image on output canvas
+                        outputCtx.drawImage(img, 0, 0);
+                        logDebug('Image drawn on output canvas');
+                        // Enable process button
+                        processBtn.disabled = false;
+                        resetBtn.disabled = false;
+                        statusMessage.textContent = 'Image loaded successfully. Click "Analyze Chart" to begin analysis.';
+                        statusMessage.className = 'status success';
+                    } catch (err) {
+                        logDebug(`Error loading image: ${err.message}`);
+                        statusMessage.textContent = `Error loading image: ${err.message}`;
+                        statusMessage.className = 'status error';
+                    }
                 };
-                
+                img.onerror = function() {
+                    logDebug('Image failed to load');
+                    statusMessage.textContent = 'Failed to load image. Please try another file.';
+                    statusMessage.className = 'status error';
+                };
+                // Set image source from FileReader result
                 img.src = event.target.result;
+                logDebug('Image source set from FileReader result');
             };
-            
-            reader.readAsDataURL(file);
+            reader.onerror = function() {
+                logDebug('FileReader error');
+                statusMessage.textContent = 'Error reading file. Please try again.';
+                statusMessage.className = 'status error';
+            };
+            // Read file as data URL
+            try {
+                reader.readAsDataURL(file);
+                logDebug('FileReader.readAsDataURL called');
+            } catch (err) {
+                logDebug(`Error reading file: ${err.message}`);
+                statusMessage.textContent = `Error reading file: ${err.message}`;
+                statusMessage.className = 'status error';
+            }
         }
-        
         // Process the chart in one step
         function processChart() {
             if (!isOpenCvReady) {
                 statusMessage.textContent = 'OpenCV.js is not ready yet. Please wait.';
+                statusMessage.className = 'status error';
+                logDebug('Attempted to process chart but OpenCV is not ready');
                 return;
             }
-            
+            if (!originalImage) {
+                statusMessage.textContent = 'No image loaded. Please upload an image first.';
+                statusMessage.className = 'status error';
+                logDebug('Attempted to process chart but no image is loaded');
+                return;
+            }
             try {
+                logDebug('Starting chart processing');
                 // Convert canvas to OpenCV Mat
                 let src = cv.imread(inputCanvas);
-                
+                logDebug(`Image converted to OpenCV Mat: ${src.cols}x${src.rows}`);
                 // Get image dimensions
                 const width = src.cols;
                 const height = src.rows;
-                
                 // Step 1: Find the center black circle
                 findCenterCircle(src);
-                
+                logDebug(`Center circle found at (${chartCenter.x.toFixed(2)}, ${chartCenter.y.toFixed(2)}) with radius ${centerRadius.toFixed(2)}`);
                 // Step 2: Estimate inner (0%) and outer (100%) circles
                 estimateCircles(width, height);
-                
+                logDebug(`Circles estimated: inner=${innerRadius.toFixed(2)}, outer=${outerRadius.toFixed(2)}`);
                 // Draw the result on the output canvas
                 drawResult();
-                
+                logDebug('Results drawn on canvas');
                 // Enable download button
                 downloadBtn.disabled = false;
-                
                 // Clean up OpenCV objects
                 src.delete();
-                
                 statusMessage.textContent = 'Chart analysis complete! Adjust the circles using the sliders if needed.';
-                
+                statusMessage.className = 'status success';
             } catch (err) {
                 console.error("Error processing chart:", err);
+                logDebug(`Error processing chart: ${err.message}`);
                 statusMessage.textContent = `Error analyzing chart: ${err.message}. Try again or reset.`;
+                statusMessage.className = 'status error';
             }
         }
-        
         // Find the center black circle
         function findCenterCircle(src) {
             // Convert to grayscale
             let gray = new cv.Mat();
             cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-            
+            logDebug('Image converted to grayscale');
             // Apply Gaussian blur to reduce noise
             let blurred = new cv.Mat();
             cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-            
+            logDebug('Gaussian blur applied');
             // Apply binary threshold to find dark areas (center hole)
             let threshold = new cv.Mat();
             cv.threshold(blurred, threshold, 50, 255, cv.THRESH_BINARY_INV);
-            
+            logDebug('Binary threshold applied');
             // Find contours
             let contours = new cv.MatVector();
             let hierarchy = new cv.Mat();
             cv.findContours(threshold, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-            
+            logDebug(`Found ${contours.size()} contours`);
             // Find the center hole (small dark circle in the center)
             let centerFound = false;
             let bestCircularity = 0;
             let bestContourIndex = -1;
             let bestArea = 0;
-            
             const width = src.cols;
             const height = src.rows;
-            
             // First, look for the center hole
             for (let i = 0; i < contours.size(); ++i) {
                 let contour = contours.get(i);
                 let area = cv.contourArea(contour);
                 let perimeter = cv.arcLength(contour, true);
-                
                 // Calculate circularity
                 if (perimeter > 0) {
                     let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                    
                     // Check if this is a small circular shape near the center
                     if (circularity > 0.7 && area > 100 && area < (width * height * 0.02)) {
                         // Calculate center of this contour
@@ -446,45 +519,41 @@
                         if (moments.m00 > 0) {
                             let cx = moments.m10 / moments.m00;
                             let cy = moments.m01 / moments.m00;
-                            
                             // Check if it's near the center of the image
                             let distFromCenter = Math.sqrt(
                                 Math.pow(cx - width/2, 2) + 
                                 Math.pow(cy - height/2, 2)
                             );
-                            
                             // If it's near the center and more circular than previous best
                             if (distFromCenter < width/4 && circularity > bestCircularity) {
                                 bestCircularity = circularity;
                                 bestContourIndex = i;
                                 bestArea = area;
+                                logDebug(`Potential center found: contour ${i}, circularity=${circularity.toFixed(2)}, area=${area.toFixed(2)}`);
                             }
                         }
                     }
                 }
             }
-            
             // If we found a good center circle
             if (bestContourIndex >= 0) {
                 let contour = contours.get(bestContourIndex);
                 let moments = cv.moments(contour);
-                
                 if (moments.m00 > 0) {
                     let cx = moments.m10 / moments.m00;
                     let cy = moments.m01 / moments.m00;
-                    
                     chartCenter = { x: cx, y: cy };
                     centerRadius = Math.sqrt(bestArea / Math.PI);
                     centerFound = true;
+                    logDebug(`Center circle found at (${cx.toFixed(2)}, ${cy.toFixed(2)}) with radius ${centerRadius.toFixed(2)}`);
                 }
             }
-            
             // If center hole not found, use image center
             if (!centerFound) {
                 chartCenter = { x: width / 2, y: height / 2 };
                 centerRadius = Math.min(width, height) * 0.03; // Estimate
+                logDebug(`No center found, using image center (${chartCenter.x.toFixed(2)}, ${chartCenter.y.toFixed(2)}) with estimated radius ${centerRadius.toFixed(2)}`);
             }
-            
             // Clean up OpenCV objects
             gray.delete();
             blurred.delete();
@@ -492,67 +561,59 @@
             contours.delete();
             hierarchy.delete();
         }
-        
         // Estimate inner (0%) and outer (100%) circles based on center circle
         function estimateCircles(width, height) {
             // Estimate inner circle (0% - Start) based on center circle - GREEN
-            // Now very close to the center black circle (just outside it)
             innerRadius = centerRadius * innerRadiusMultiplier;
-            
             // Estimate outer circle (100% - End) based on center radius - BLUE
-            // This should correspond to where the blue circle is in the chart
             outerRadius = centerRadius * outerRadiusMultiplier;
-            
             // Make sure outer radius isn't too large
             if (outerRadius > Math.min(width, height) / 2) {
                 outerRadius = Math.min(width, height) / 2 - 10;
+                logDebug(`Outer radius capped to ${outerRadius.toFixed(2)} to fit within image`);
             }
-            
             // Initialize handle position at 0 degrees (top)
             handlePosition = {
                 x: chartCenter.x,
                 y: chartCenter.y - outerRadius
             };
-            
             // Initialize angle
             currentAngle = 0;
         }
-        
         // Draw the result on the output canvas
         function drawResult() {
             // Clear canvas
             outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-            
             // Draw original image
-            outputCtx.putImageData(originalImage, 0, 0);
-            
+            if (originalImage) {
+                outputCtx.putImageData(originalImage, 0, 0);
+            } else {
+                logDebug('Warning: No original image data to draw');
+                return;
+            }
             // Draw center point
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fill();
-            
             // Draw center circle
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, centerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Draw inner circle (0% - Start) - GREEN
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Draw outer circle (100% - End) - BLUE
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Draw measurement line
             outputCtx.beginPath();
             outputCtx.moveTo(chartCenter.x, chartCenter.y);
@@ -560,7 +621,6 @@
             outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.lineWidth = 3;
             outputCtx.stroke();
-            
             // Draw draggable handle
             outputCtx.beginPath();
             outputCtx.arc(handlePosition.x, handlePosition.y, handleRadius, 0, 2 * Math.PI);
@@ -569,65 +629,54 @@
             outputCtx.strokeStyle = 'white';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Add text labels
             outputCtx.font = '16px Arial';
             outputCtx.textAlign = 'center';
-            
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fillText('Center', chartCenter.x, chartCenter.y - centerRadius - 10);
-            
             outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.fillText('0% (Start)', chartCenter.x, chartCenter.y - innerRadius - 10);
-            
             outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.fillText('100% (End)', chartCenter.x, chartCenter.y - outerRadius - 10);
-            
             // Update angle display
             angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
         }
-        
         // Apply tilt correction based on current angle
         function applyTiltCorrection() {
             try {
+                logDebug(`Applying tilt correction of ${currentAngle.toFixed(1)}°`);
                 // Convert canvas to OpenCV Mat
                 let src = cv.imread(inputCanvas);
-                
                 // Get image dimensions
                 const width = src.cols;
                 const height = src.rows;
-                
                 // Create rotation matrix
                 let rotationMatrix = cv.Mat.zeros(2, 3, cv.CV_32F);
                 let center = new cv.Point(chartCenter.x, chartCenter.y);
-                
                 // Get rotation matrix for rotating the image around the center
                 rotationMatrix = cv.getRotationMatrix2D(center, -currentAngle, 1.0);
-                
                 // Apply affine transformation
                 let correctedImage = new cv.Mat();
                 let dsize = new cv.Size(width, height);
                 cv.warpAffine(src, correctedImage, rotationMatrix, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
-                
                 // Draw the result on the output canvas
                 cv.imshow('canvasOutput', correctedImage);
-                
+                logDebug('Tilt correction applied to image');
                 // Draw circles and labels on the corrected image
                 drawCirclesOnCanvas();
-                
                 statusMessage.textContent = `Tilt corrected by ${currentAngle.toFixed(1)}°.`;
-                
+                statusMessage.className = 'status success';
                 // Clean up OpenCV objects
                 src.delete();
                 rotationMatrix.delete();
                 correctedImage.delete();
-                
             } catch (err) {
                 console.error(err);
+                logDebug(`Error applying tilt correction: ${err.message}`);
                 statusMessage.textContent = 'Error applying tilt correction: ' + err.message;
+                statusMessage.className = 'status error';
             }
         }
-        
         // Draw circles and labels on the canvas
         function drawCirclesOnCanvas() {
             // Draw center point
@@ -635,158 +684,136 @@
             outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fill();
-            
             // Draw center circle
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, centerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Draw inner circle (0% - Start) - GREEN
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Draw outer circle (100% - End) - BLUE
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
-            
             // Add text labels
             outputCtx.font = '16px Arial';
             outputCtx.textAlign = 'center';
-            
             outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
             outputCtx.fillText('0% (Start)', chartCenter.x, chartCenter.y - innerRadius - 10);
-            
             outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
             outputCtx.fillText('100% (End)', chartCenter.x, chartCenter.y - outerRadius - 10);
-            
             // Add tilt correction info
             outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
             outputCtx.fillText(`Tilt Corrected: ${currentAngle.toFixed(1)}°`, chartCenter.x, chartCenter.y + outerRadius + 20);
         }
-        
         // Start dragging the handle
         function startDrag(e) {
             const rect = outputCanvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) * (outputCanvas.width / rect.width);
             const y = (e.clientY - rect.top) * (outputCanvas.height / rect.height);
-            
             // Check if click is within handle
             const distance = Math.sqrt(
                 Math.pow(x - handlePosition.x, 2) + 
                 Math.pow(y - handlePosition.y, 2)
             );
-            
             if (distance <= handleRadius * 1.5) {
                 isDragging = true;
+                logDebug(`Started dragging handle at (${x.toFixed(2)}, ${y.toFixed(2)})`);
             }
         }
-        
         // Handle touch events
         function handleTouch(e) {
             e.preventDefault();
-            
             if (e.type === 'touchstart') {
                 const rect = outputCanvas.getBoundingClientRect();
                 const touch = e.touches[0];
                 const x = (touch.clientX - rect.left) * (outputCanvas.width / rect.width);
                 const y = (touch.clientY - rect.top) * (outputCanvas.height / rect.height);
-                
                 // Check if touch is within handle
                 const distance = Math.sqrt(
                     Math.pow(x - handlePosition.x, 2) + 
                     Math.pow(y - handlePosition.y, 2)
                 );
-                
                 if (distance <= handleRadius * 2) {
                     isDragging = true;
+                    logDebug(`Started touch dragging at (${x.toFixed(2)}, ${y.toFixed(2)})`);
                 }
             } else if (e.type === 'touchmove' && isDragging) {
                 const rect = outputCanvas.getBoundingClientRect();
                 const touch = e.touches[0];
                 const x = (touch.clientX - rect.left) * (outputCanvas.width / rect.width);
                 const y = (touch.clientY - rect.top) * (outputCanvas.height / rect.height);
-                
                 updateHandlePosition(x, y);
             }
         }
-        
         // Drag the handle
         function drag(e) {
             if (isDragging) {
                 const rect = outputCanvas.getBoundingClientRect();
                 const x = (e.clientX - rect.left) * (outputCanvas.width / rect.width);
                 const y = (e.clientY - rect.top) * (outputCanvas.height / rect.height);
-                
                 updateHandlePosition(x, y);
             }
         }
-        
         // Update handle position based on mouse/touch position
         function updateHandlePosition(x, y) {
             // Calculate vector from center to mouse position
             const dx = x - chartCenter.x;
             const dy = y - chartCenter.y;
-            
             // Calculate distance from center
             const distance = Math.sqrt(dx * dx + dy * dy);
-            
             if (distance === 0) return; // Avoid division by zero
-            
             // Normalize to outer radius
             const normalizedX = chartCenter.x + (dx / distance) * outerRadius;
             const normalizedY = chartCenter.y + (dy / distance) * outerRadius;
-            
             // Update handle position
             handlePosition = { x: normalizedX, y: normalizedY };
-            
             // Calculate angle (0° at top, clockwise)
             currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
-            
             // Redraw the result
             drawResult();
-            
             // Apply tilt correction if angle changes significantly
             if (Math.abs(currentAngle - 0) > 5) {
+                logDebug(`Angle changed to ${currentAngle.toFixed(1)}°, applying tilt correction`);
                 applyTiltCorrection();
             }
         }
-        
         // End dragging
         function endDrag() {
             if (isDragging) {
                 isDragging = false;
+                logDebug('Stopped dragging handle');
                 // Apply tilt correction when handle is released
                 applyTiltCorrection();
             }
         }
-        
         // Reset canvas
         function resetCanvas() {
             if (originalImage) {
+                logDebug('Resetting canvas');
                 outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 outputCtx.putImageData(originalImage, 0, 0);
                 downloadBtn.disabled = true;
                 statusMessage.textContent = 'Canvas reset. Click "Analyze Chart" to begin analysis again.';
+                statusMessage.className = 'status';
                 angleInfo.textContent = 'Angle: -- degrees';
             }
         }
-        
         // Download canvas as image
         function downloadCanvas() {
+            logDebug('Downloading canvas as image');
             const link = document.createElement('a');
             link.download = 'barton-chart-analysis.png';
             link.href = outputCanvas.toDataURL('image/png');
             link.click();
         }
-        
         // Initialize the application
         init();
     </script>
