@@ -199,6 +199,29 @@
             border-left: 4px solid #3498db;
         }
 
+        .angle-controls {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+
+        .angle-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .curve-controls {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -243,6 +266,10 @@
                 <div class="legend-color" style="background-color: rgba(0, 0, 255, 0.8);"></div>
                 <span>100% (End)</span>
             </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background-color: rgba(0, 0, 0, 0.8);"></div>
+                <span>Measurement Line</span>
+            </div>
         </div>
 
         <div class="detection-options">
@@ -260,6 +287,38 @@
             </div>
         </div>
 
+        <div class="angle-controls">
+            <div class="angle-input">
+                <label for="angleInput">Set Measurement Angle (degrees):</label>
+                <input type="number" id="angleInput" min="0" max="359" value="0" step="1">
+                <button id="setAngleBtn">Set Angle</button>
+            </div>
+            <div class="angle-input">
+                <label for="lineWidthInput">Line Width:</label>
+                <input type="range" id="lineWidthInput" min="1" max="10" value="3" step="1">
+                <span id="lineWidthValue">3px</span>
+            </div>
+            <div class="angle-input">
+                <label for="lineColorInput">Line Color:</label>
+                <input type="color" id="lineColorInput" value="#000000">
+            </div>
+        </div>
+
+        <div class="curve-controls">
+            <div class="angle-input">
+                <label for="curvatureSlider">Curve Intensity:</label>
+                <input type="range" id="curvatureSlider" min="0" max="100" value="70" step="1">
+                <span id="curvatureValue">70%</span>
+            </div>
+            <div class="angle-input">
+                <label for="startTimeInput">Start Time:</label>
+                <input type="time" id="startTimeInput" value="00:00">
+                <label for="endTimeInput">End Time:</label>
+                <input type="time" id="endTimeInput" value="12:00">
+                <button id="setTimeBtn">Set Time Range</button>
+            </div>
+        </div>
+
         <div class="slider-container">
             <div class="slider-row">
                 <span class="slider-label">0% Circle (Green):</span>
@@ -268,8 +327,8 @@
             </div>
             <div class="slider-row">
                 <span class="slider-label">100% Circle (Blue):</span>
-                <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="12.0">
-                <span id="outerRadiusValue" class="slider-value">12.0x</span>
+                <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="15.0">
+                <span id="outerRadiusValue" class="slider-value">15.0x</span>
             </div>
         </div>
 
@@ -287,6 +346,7 @@
             <div id="centerResult">Center: Not detected</div>
             <div id="innerResult">0% Circle (Green): Not detected</div>
             <div id="outerResult">100% Circle (Blue): Not detected</div>
+            <div id="measurementResult">Measurement: Not set</div>
         </div>
         
         <div class="info-panel">
@@ -326,6 +386,17 @@
         let centerResult = document.getElementById('centerResult');
         let innerResult = document.getElementById('innerResult');
         let outerResult = document.getElementById('outerResult');
+        let measurementResult = document.getElementById('measurementResult');
+        let angleInput = document.getElementById('angleInput');
+        let setAngleBtn = document.getElementById('setAngleBtn');
+        let lineWidthInput = document.getElementById('lineWidthInput');
+        let lineWidthValue = document.getElementById('lineWidthValue');
+        let lineColorInput = document.getElementById('lineColorInput');
+        let curvatureSlider = document.getElementById('curvatureSlider');
+        let curvatureValue = document.getElementById('curvatureValue');
+        let startTimeInput = document.getElementById('startTimeInput');
+        let endTimeInput = document.getElementById('endTimeInput');
+        let setTimeBtn = document.getElementById('setTimeBtn');
         
         // Chart parameters
         let chartCenter = { x: 0, y: 0 };
@@ -333,19 +404,22 @@
         let innerRadius = 0;  // 0% - Start of graph (GREEN)
         let outerRadius = 0;  // 100% - End of graph (BLUE)
         let innerRadiusMultiplier = 1.5; // Default: 0% circle is 1.5x the center radius
-        let outerRadiusMultiplier = 12.0; // Default: 100% circle is 12.0x the center radius
+        let outerRadiusMultiplier = 15.0; // Default: 100% circle is 15.0x the center radius
         let currentAngle = 0;
         let isDragging = false;
         let handleRadius = 10;
         let handlePosition = { x: 0, y: 0 };
         let originalImage = null;
+        let lineWidth = 3;
+        let lineColor = '#000000';
+        let curvatureIntensity = 0.7; // Default curve intensity (0-1)
         
         // OpenCV ready flag
         let isOpenCvReady = false;
         let isDebugMode = false;
         
         // Example image URL - using the URL from the user's uploaded image
-        const exampleImageUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/8d314dd9-b889-47d1-aae2-f44aca293cac%20%281%29.jfif-gA8wcFipCywlaO9KTO0J0tsnRlVe9a.jpeg';
+        const exampleImageUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-ga89NnHSQbxPXND3GeBoiRDG6QOBFD.png';
         
         // Show loading message while OpenCV.js loads
         loadingMessage.style.display = 'block';
@@ -473,8 +547,87 @@
                 }
             });
             
+            // Angle input events
+            setAngleBtn.addEventListener('click', function() {
+                const angle = parseFloat(angleInput.value);
+                if (!isNaN(angle) && angle >= 0 && angle < 360) {
+                    currentAngle = angle;
+                    updateMeasurementLine();
+                    logDebug(`Measurement angle set to ${angle}°`);
+                }
+            });
+            
+            // Line width input event
+            lineWidthInput.addEventListener('input', function() {
+                lineWidth = parseInt(this.value);
+                lineWidthValue.textContent = lineWidth + 'px';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+            });
+            
+            // Line color input event
+            lineColorInput.addEventListener('input', function() {
+                lineColor = this.value;
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+            });
+            
+            // Curvature slider event
+            curvatureSlider.addEventListener('input', function() {
+                curvatureIntensity = parseInt(this.value) / 100;
+                curvatureValue.textContent = this.value + '%';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+            });
+            
+            // Set time range button
+            setTimeBtn.addEventListener('click', function() {
+                const startTime = startTimeInput.value;
+                const endTime = endTimeInput.value;
+                
+                // Convert time to angle (24-hour clock maps to 360 degrees)
+                const startHours = parseInt(startTime.split(':')[0]);
+                const startMinutes = parseInt(startTime.split(':')[1]);
+                const startAngle = ((startHours + startMinutes/60) / 24) * 360;
+                
+                const endHours = parseInt(endTime.split(':')[0]);
+                const endMinutes = parseInt(endTime.split(':')[1]);
+                const endAngle = ((endHours + endMinutes/60) / 24) * 360;
+                
+                // Set the current angle to the end angle
+                currentAngle = endAngle;
+                angleInput.value = Math.round(currentAngle);
+                
+                updateMeasurementLine();
+                logDebug(`Time range set: ${startTime} to ${endTime}, angles: ${startAngle.toFixed(1)}° to ${endAngle.toFixed(1)}°`);
+            });
+            
             // Initialize debug info
             logDebug('Application initialized');
+        }
+        
+        // Update the measurement line based on current angle
+        function updateMeasurementLine() {
+            if (!originalImage) return;
+            
+            // Calculate handle position based on angle
+            const radians = (currentAngle * Math.PI) / 180;
+            handlePosition = {
+                x: chartCenter.x + Math.sin(radians) * outerRadius,
+                y: chartCenter.y - Math.cos(radians) * outerRadius
+            };
+            
+            // Update angle display
+            angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
+            
+            // Update measurement result
+            measurementResult.textContent = `Measurement: ${currentAngle.toFixed(1)}° from top (clockwise)`;
+            
+            // Redraw the result
+            drawResult();
         }
         
         // Load the example image
@@ -541,12 +694,8 @@
                 outerRadius = centerRadius * outerRadiusMultiplier;
                 
                 // Update handle position
-                handlePosition = {
-                    x: chartCenter.x,
-                    y: chartCenter.y - outerRadius
-                };
+                updateMeasurementLine();
                 
-                drawResult();
                 logDebug(`Circles updated: inner=${innerRadius.toFixed(2)}, outer=${outerRadius.toFixed(2)}`);
             }
         }
@@ -678,6 +827,12 @@
                 // Update detection results
                 innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
                 outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(2)}x center)`;
+                
+                // Set initial measurement angle (0 degrees - top)
+                currentAngle = 0;
+                angleInput.value = currentAngle;
+                updateMeasurementLine();
+                
                 detectionResults.style.display = 'block';
                 
                 // Draw the result on the output canvas
@@ -877,32 +1032,27 @@
                     }
                 }
                 
-                // Now detect the outer circle using edge detection
-                let gray = new cv.Mat();
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+                // Now detect the blue outer circle (100%)
+                // Blue mask (for 100% circle)
+                let blueLower = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(100, 50, 50));
+                let blueUpper = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(140, 255, 255));
+                let blueMask = new cv.Mat();
+                cv.inRange(hsv, blueLower, blueUpper, blueMask);
                 
-                let blurred = new cv.Mat();
-                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+                let blueContours = new cv.MatVector();
+                cv.findContours(blueMask, blueContours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
                 
-                let edges = new cv.Mat();
-                cv.Canny(blurred, edges, 50, 150);
+                logDebug(`Found ${blueContours.size()} blue contours`);
                 
-                let outerContours = new cv.MatVector();
-                cv.findContours(edges, outerContours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                // Find the best blue contour (100% circle)
+                let bestBlueRadius = 0;
+                let bestBlueDistance = Infinity;
                 
-                // Find the largest circular contour for the outer edge
-                let bestOuterRadius = 0;
-                let bestOuterCircularity = 0;
-                
-                for (let i = 0; i < outerContours.size(); ++i) {
-                    let contour = outerContours.get(i);
+                for (let i = 0; i < blueContours.size(); ++i) {
+                    let contour = blueContours.get(i);
                     let area = cv.contourArea(contour);
-                    let perimeter = cv.arcLength(contour, true);
                     
-                    if (perimeter > 0 && area > width * height * 0.2) {  // Must be a large area
-                        let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                        
-                        // Calculate center of this contour
+                    if (area > 500) {  // Minimum area threshold for blue circle
                         let moments = cv.moments(contour);
                         if (moments.m00 > 0) {
                             let cx = moments.m10 / moments.m00;
@@ -914,13 +1064,16 @@
                                 Math.pow(cy - chartCenter.y, 2)
                             );
                             
-                            // If it's somewhat circular and close to the chart center
-                            if (circularity > 0.6 && distFromCenter < width/8 && circularity > bestOuterCircularity) {
-                                // Estimate radius from area
-                                let radius = Math.sqrt(area / Math.PI);
-                                bestOuterRadius = radius;
-                                bestOuterCircularity = circularity;
-                                logDebug(`Potential 100% outer circle found: radius=${radius.toFixed(2)}, circularity=${circularity.toFixed(2)}`);
+                            // Estimate radius from area
+                            let radius = Math.sqrt(area / Math.PI);
+                            
+                            // If this contour is closer to the center than previous best
+                            // and it's larger than the inner circle
+                            if (distFromCenter < bestBlueDistance && 
+                                radius > centerRadius * 5) {
+                                bestBlueDistance = distFromCenter;
+                                bestBlueRadius = radius;
+                                logDebug(`Potential 100% blue circle found: radius=${radius.toFixed(2)}, distance=${distFromCenter.toFixed(2)}`);
                             }
                         }
                     }
@@ -939,25 +1092,19 @@
                     logDebug(`No 0% green circle detected, using default: radius=${innerRadius.toFixed(2)}`);
                 }
                 
-                if (bestOuterRadius > 0) {
-                    outerRadius = bestOuterRadius;
+                if (bestBlueRadius > 0) {
+                    outerRadius = bestBlueRadius;
                     outerRadiusMultiplier = outerRadius / centerRadius;
                     outerRadiusSlider.value = outerRadiusMultiplier;
                     outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                    logDebug(`100% outer circle detected: radius=${outerRadius.toFixed(2)}, multiplier=${outerRadiusMultiplier.toFixed(2)}`);
+                    logDebug(`100% blue circle detected: radius=${outerRadius.toFixed(2)}, multiplier=${outerRadiusMultiplier.toFixed(2)}`);
                 } else {
-                    // If no outer circle detected, look for the edge of the chart
+                    // If no blue circle detected, look for the edge of the chart
                     detectChartEdge(src);
                 }
                 
                 // Initialize handle position at 0 degrees (top)
-                handlePosition = {
-                    x: chartCenter.x,
-                    y: chartCenter.y - outerRadius
-                };
-                
-                // Initialize angle
-                currentAngle = 0;
+                updateMeasurementLine();
                 
                 // Clean up
                 hsv.delete();
@@ -965,14 +1112,14 @@
                 greenUpper.delete();
                 greenMask.delete();
                 greenContours.delete();
-                gray.delete();
-                blurred.delete();
-                edges.delete();
-                outerContours.delete();
+                blueLower.delete();
+                blueUpper.delete();
+                blueMask.delete();
+                blueContours.delete();
                 hierarchy.delete();
                 
             } catch (err) {
-                logDebug(`Error in green/outer circle detection: ${err.message}`);
+                logDebug(`Error in green/blue circle detection: ${err.message}`);
                 // Fallback to contour detection
                 detectBoundariesByContours(src);
             }
@@ -1183,14 +1330,8 @@
                     estimateCircles(width, height);
                 }
                 
-                // Initialize handle position at 0 degrees (top)
-                handlePosition = {
-                    x: chartCenter.x,
-                    y: chartCenter.y - outerRadius
-                };
-                
-                // Initialize angle
-                currentAngle = 0;
+                // Initialize measurement line
+                updateMeasurementLine();
                 
                 // Clean up
                 gray.delete();
@@ -1223,14 +1364,8 @@
                 logDebug(`Outer radius capped to ${outerRadius.toFixed(2)} to fit within image`);
             }
             
-            // Initialize handle position at 0 degrees (top)
-            handlePosition = {
-                x: chartCenter.x,
-                y: chartCenter.y - outerRadius
-            };
-            
-            // Initialize angle
-            currentAngle = 0;
+            // Initialize measurement line
+            updateMeasurementLine();
         }
         
         // Draw the result on the output canvas
@@ -1273,18 +1408,43 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw measurement line
+            // Draw curved measurement line
             outputCtx.beginPath();
-            outputCtx.moveTo(chartCenter.x, chartCenter.y);
-            outputCtx.lineTo(handlePosition.x, handlePosition.y);
-            outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-            outputCtx.lineWidth = 3;
+            
+            // Calculate the end angle in radians
+            const endAngle = currentAngle * (Math.PI / 180);
+            
+            // Draw a curved arc from center to outer edge
+            // Use a Bezier curve to create a more pronounced curve
+            const startX = chartCenter.x;
+            const startY = chartCenter.y;
+            const endX = chartCenter.x + Math.sin(endAngle) * outerRadius;
+            const endY = chartCenter.y - Math.cos(endAngle) * outerRadius;
+            
+            // Calculate control points for the curve
+            // This creates a curved line that bends outward
+            const midRadius = centerRadius + (outerRadius - centerRadius) * 0.5;
+            const midAngle = endAngle * 0.5;
+            const curveFactor = curvatureIntensity; // Adjust this to control curve intensity
+            
+            // Calculate the midpoint with an offset to create the curve
+            const midX = chartCenter.x + Math.sin(midAngle) * midRadius * (1 + curveFactor);
+            const midY = chartCenter.y - Math.cos(midAngle) * midRadius * (1 + curveFactor);
+            
+            // Draw the curved line
+            outputCtx.moveTo(startX, startY);
+            outputCtx.quadraticCurveTo(midX, midY, endX, endY);
+            
+            outputCtx.strokeStyle = lineColor;
+            outputCtx.lineWidth = lineWidth;
             outputCtx.stroke();
             
-            // Draw draggable handle
+            // Draw handle at the end of the arc
+            handlePosition = { x: endX, y: endY };
+            
             outputCtx.beginPath();
             outputCtx.arc(handlePosition.x, handlePosition.y, handleRadius, 0, 2 * Math.PI);
-            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+            outputCtx.fillStyle = lineColor;
             outputCtx.fill();
             outputCtx.strokeStyle = 'white';
             outputCtx.lineWidth = 2;
@@ -1478,6 +1638,12 @@
             // Calculate angle (0° at top, clockwise)
             currentAngle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
             
+            // Update angle input
+            angleInput.value = Math.round(currentAngle);
+            
+            // Update measurement result
+            measurementResult.textContent = `Measurement: ${currentAngle.toFixed(1)}° from top (clockwise)`;
+            
             // Redraw the result
             drawResult();
         }
@@ -1487,8 +1653,6 @@
             if (isDragging) {
                 isDragging = false;
                 logDebug('Stopped dragging handle');
-                // Apply tilt correction when handle is released
-                applyTiltCorrection();
             }
         }
         
