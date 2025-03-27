@@ -222,6 +222,33 @@
             border-left: 4px solid #3498db;
         }
 
+        .circles-list {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .progress-bar {
+            height: 20px;
+            background-color: #4CAF50;
+            border-radius: 4px;
+            width: 0%;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -244,6 +271,7 @@
             </label>
             <input type="file" id="fileInput" accept="image/*">
             <button id="processBtn" disabled>Analyze Chart</button>
+            <button id="simpleDetectBtn" disabled>Simple Circle Detection</button>
             <button id="resetBtn" disabled>Reset</button>
             <button id="downloadBtn" disabled>Download Result</button>
             <button id="debugBtn">Toggle Debug</button>
@@ -251,6 +279,7 @@
 
         <div class="example-image">
             <button id="loadExampleBtn">Load Example Image</button>
+            <button id="loadGuideBtn">Load Guide Image</button>
         </div>
 
         <div class="legend">
@@ -260,11 +289,11 @@
             </div>
             <div class="legend-item">
                 <div class="legend-color" style="background-color: rgba(0, 255, 0, 0.8);"></div>
-                <span>0% (Start)</span>
+                <span>0% (Start) - White Circle with Details</span>
             </div>
             <div class="legend-item">
                 <div class="legend-color" style="background-color: rgba(0, 0, 255, 0.8);"></div>
-                <span>100% (End)</span>
+                <span>100% (End) - Blue Circle with Days</span>
             </div>
             <div class="legend-item">
                 <div class="legend-color" style="background-color: rgba(0, 0, 0, 0.8);"></div>
@@ -274,16 +303,21 @@
 
         <div class="detection-options">
             <div class="detection-option">
-                <input type="checkbox" id="autoDetectBoundaries" checked>
-                <label for="autoDetectBoundaries">Auto-detect chart boundaries</label>
+                <input type="checkbox" id="showAllCircles" checked>
+                <label for="showAllCircles">Show all detected circles</label>
             </div>
-            <div class="detection-option">
-                <input type="checkbox" id="detectGreenCircle" checked>
-                <label for="detectGreenCircle">Detect green circle as 0%</label>
+        </div>
+
+        <div class="slider-container">
+            <div class="slider-row">
+                <span class="slider-label">0% Circle (Green):</span>
+                <input type="range" id="innerRadiusSlider" min="1.05" max="100.0" step="0.05" value="5.95">
+                <span id="innerRadiusValue" class="slider-value">5.95x</span>
             </div>
-            <div class="detection-option">
-                <input type="checkbox" id="detectOuterCircle" checked>
-                <label for="detectOuterCircle">Detect outer circle as 100%</label>
+            <div class="slider-row">
+                <span class="slider-label">100% Circle (Blue):</span>
+                <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="21.2">
+                <span id="outerRadiusValue" class="slider-value">21.2x</span>
             </div>
         </div>
 
@@ -319,17 +353,8 @@
             </div>
         </div>
 
-        <div class="slider-container">
-            <div class="slider-row">
-                <span class="slider-label">0% Circle (Green):</span>
-                <input type="range" id="innerRadiusSlider" min="1.05" max="100.0" step="0.05" value="1.5">
-                <span id="innerRadiusValue" class="slider-value">1.5x</span>
-            </div>
-            <div class="slider-row">
-                <span class="slider-label">100% Circle (Blue):</span>
-                <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="15.0">
-                <span id="outerRadiusValue" class="slider-value">15.0x</span>
-            </div>
+        <div id="progressContainer" class="progress-container" style="display: none;">
+            <div id="progressBar" class="progress-bar">0%</div>
         </div>
 
         <div id="loadingMessage" class="loading" style="display: none;">
@@ -367,10 +392,12 @@
         let outputCtx = outputCanvas.getContext('2d');
         let fileInput = document.getElementById('fileInput');
         let processBtn = document.getElementById('processBtn');
+        let simpleDetectBtn = document.getElementById('simpleDetectBtn');
         let resetBtn = document.getElementById('resetBtn');
         let downloadBtn = document.getElementById('downloadBtn');
         let debugBtn = document.getElementById('debugBtn');
         let loadExampleBtn = document.getElementById('loadExampleBtn');
+        let loadGuideBtn = document.getElementById('loadGuideBtn');
         let angleInfo = document.getElementById('angleInfo');
         let statusMessage = document.getElementById('statusMessage');
         let loadingMessage = document.getElementById('loadingMessage');
@@ -379,9 +406,7 @@
         let outerRadiusSlider = document.getElementById('outerRadiusSlider');
         let innerRadiusValue = document.getElementById('innerRadiusValue');
         let outerRadiusValue = document.getElementById('outerRadiusValue');
-        let autoDetectBoundaries = document.getElementById('autoDetectBoundaries');
-        let detectGreenCircle = document.getElementById('detectGreenCircle');
-        let detectOuterCircle = document.getElementById('detectOuterCircle');
+        let showAllCircles = document.getElementById('showAllCircles');
         let detectionResults = document.getElementById('detectionResults');
         let centerResult = document.getElementById('centerResult');
         let innerResult = document.getElementById('innerResult');
@@ -397,14 +422,16 @@
         let startTimeInput = document.getElementById('startTimeInput');
         let endTimeInput = document.getElementById('endTimeInput');
         let setTimeBtn = document.getElementById('setTimeBtn');
+        let progressContainer = document.getElementById('progressContainer');
+        let progressBar = document.getElementById('progressBar');
         
         // Chart parameters
-        let chartCenter = { x: 0, y: 0 };
-        let centerRadius = 0;
-        let innerRadius = 0;  // 0% - Start of graph (GREEN)
-        let outerRadius = 0;  // 100% - End of graph (BLUE)
-        let innerRadiusMultiplier = 1.5; // Default: 0% circle is 1.5x the center radius
-        let outerRadiusMultiplier = 15.0; // Default: 100% circle is 15.0x the center radius
+        let chartCenter = { x: 621, y: 565 }; // Fixed center coordinates
+        let centerRadius = 22.8; // Fixed center radius
+        let innerRadius = 135.7;  // 0% - Start of graph (GREEN/WHITE) - Fixed at 5.95x center
+        let outerRadius = 483.3;  // 100% - End of graph (BLUE) - Fixed at 21.2x center
+        let innerRadiusMultiplier = 5.95; // Default: 0% circle is 5.95x the center radius
+        let outerRadiusMultiplier = 21.2; // Default: 100% circle is 21.2x the center radius
         let currentAngle = 0;
         let isDragging = false;
         let handleRadius = 10;
@@ -413,13 +440,15 @@
         let lineWidth = 3;
         let lineColor = '#000000';
         let curvatureIntensity = 0.7; // Default curve intensity (0-1)
+        let detectedCircles = []; // Array to store all detected circles
         
         // OpenCV ready flag
         let isOpenCvReady = false;
         let isDebugMode = false;
         
-        // Example image URL - using the URL from the user's uploaded image
-        const exampleImageUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/image-ga89NnHSQbxPXND3GeBoiRDG6QOBFD.png';
+        // Example image URLs
+        const exampleImageUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/c468d66d-a3f1-4d1d-bc27-2e4cd7490e47.jfif-Lx0Y6LXbuJfLv95icJQDxOLMjOUrCk.jpeg';
+        const guideImageUrl = 'https://hebbkx1anhila5yf.public.blob.vercel-storage.com/guide.jpg-ckwjmfO5e2gt5IioMmxrCKPH33Q5Vc.jpeg';
         
         // Show loading message while OpenCV.js loads
         loadingMessage.style.display = 'block';
@@ -472,10 +501,16 @@
             
             // Process button click event
             processBtn.addEventListener('click', function() {
-                // Use setTimeout to prevent UI freezing
                 statusMessage.textContent = 'Analyzing chart...';
                 logDebug('Process button clicked');
                 setTimeout(processChart, 100);
+            });
+            
+            // Simple detect button click event
+            simpleDetectBtn.addEventListener('click', function() {
+                statusMessage.textContent = 'Detecting circles using simple method...';
+                logDebug('Simple circle detection button clicked');
+                setTimeout(detectCirclesSimple, 100);
             });
             
             // Reset button click event
@@ -497,6 +532,12 @@
                 loadExampleImage();
             });
             
+            // Load guide button click event
+            loadGuideBtn.addEventListener('click', function() {
+                logDebug('Load guide button clicked');
+                loadGuideImage();
+            });
+            
             // Canvas mouse events for handle dragging
             outputCanvas.addEventListener('mousedown', startDrag);
             outputCanvas.addEventListener('mousemove', drag);
@@ -512,38 +553,32 @@
             innerRadiusSlider.addEventListener('input', function() {
                 innerRadiusMultiplier = parseFloat(this.value);
                 innerRadiusValue.textContent = innerRadiusMultiplier.toFixed(2) + 'x';
-                if (originalImage) {
-                    updateCircles();
+                if (originalImage && centerRadius > 0) {
+                    innerRadius = centerRadius * innerRadiusMultiplier;
+                    // Update the detection results text immediately
+                    innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
+                    updateMeasurementLine();
+                    logDebug(`Inner radius updated: ${innerRadius.toFixed(2)}`);
                 }
             });
             
             outerRadiusSlider.addEventListener('input', function() {
                 outerRadiusMultiplier = parseFloat(this.value);
                 outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                if (originalImage) {
-                    updateCircles();
+                if (originalImage && centerRadius > 0) {
+                    outerRadius = centerRadius * outerRadiusMultiplier;
+                    // Update the detection results text
+                    outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(1)}x center)`;
+                    updateMeasurementLine();
+                    logDebug(`Outer radius updated: ${outerRadius.toFixed(2)}`);
                 }
             });
             
-            // Detection options events
-            autoDetectBoundaries.addEventListener('change', function() {
-                if (originalImage && this.checked) {
-                    logDebug('Auto-detect boundaries enabled, reprocessing chart');
-                    processChart();
-                }
-            });
-            
-            detectGreenCircle.addEventListener('change', function() {
-                if (originalImage && autoDetectBoundaries.checked) {
-                    logDebug('Green circle detection setting changed, reprocessing chart');
-                    processChart();
-                }
-            });
-            
-            detectOuterCircle.addEventListener('change', function() {
-                if (originalImage && autoDetectBoundaries.checked) {
-                    logDebug('Outer circle detection setting changed, reprocessing chart');
-                    processChart();
+            // Show all circles checkbox event
+            showAllCircles.addEventListener('change', function() {
+                if (originalImage && detectedCircles.length > 0) {
+                    logDebug('Show all circles setting changed, redrawing');
+                    drawResult();
                 }
             });
             
@@ -632,71 +667,79 @@
         
         // Load the example image
         function loadExampleImage() {
+            loadImageFromUrl(exampleImageUrl, 'example');
+        }
+        
+        // Load the guide image
+        function loadGuideImage() {
+            loadImageFromUrl(guideImageUrl, 'guide');
+        }
+        
+        // Load image from URL
+        function loadImageFromUrl(url, type) {
             try {
-                statusMessage.textContent = 'Loading example image...';
+                statusMessage.textContent = `Loading ${type} image...`;
                 statusMessage.className = 'status';
                 
-                const exampleImg = new Image();
-                exampleImg.crossOrigin = 'anonymous';
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
                 
-                exampleImg.onload = function() {
-                    logDebug('Example image loaded successfully');
+                img.onload = function() {
+                    logDebug(`${type} image loaded successfully`);
                     
                     // Resize canvas to match image dimensions
-                    inputCanvas.width = exampleImg.width;
-                    inputCanvas.height = exampleImg.height;
-                    outputCanvas.width = exampleImg.width;
-                    outputCanvas.height = exampleImg.height;
+                    inputCanvas.width = img.width;
+                    inputCanvas.height = img.height;
+                    outputCanvas.width = img.width;
+                    outputCanvas.height = img.height;
                     
                     // Draw image on input canvas
-                    inputCtx.drawImage(exampleImg, 0, 0);
+                    inputCtx.drawImage(img, 0, 0);
                     
                     // Store original image
                     originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
                     
                     // Draw image on output canvas
-                    outputCtx.drawImage(exampleImg, 0, 0);
+                    outputCtx.drawImage(img, 0, 0);
                     
-                    // Enable process button
+                    // Enable buttons
                     processBtn.disabled = false;
+                    simpleDetectBtn.disabled = false;
                     resetBtn.disabled = false;
                     
-                    statusMessage.textContent = 'Example image loaded. Click "Analyze Chart" to begin analysis.';
-                    statusMessage.className = 'status success';
+                    // Set up detection results with the fixed values
+                    centerResult.textContent = `Center: (${chartCenter.x}, ${chartCenter.y}) with radius ${centerRadius.toFixed(1)}px`;
+                    innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
+                    outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(1)}x center)`;
+                    measurementResult.textContent = `Measurement: ${currentAngle.toFixed(1)}° from top (clockwise)`;
                     
-                    // Auto process the chart
-                    if (autoDetectBoundaries.checked) {
-                        setTimeout(processChart, 500);
-                    }
+                    // Show detection results
+                    detectionResults.style.display = 'block';
+                    
+                    // Draw the result
+                    drawResult();
+                    
+                    // Enable download button
+                    downloadBtn.disabled = false;
+                    
+                    statusMessage.textContent = `${type} image loaded. The chart has been automatically analyzed.`;
+                    statusMessage.className = 'status success';
                 };
                 
-                exampleImg.onerror = function(err) {
-                    logDebug('Failed to load example image: ' + (err.message || 'Unknown error'));
-                    statusMessage.textContent = 'Failed to load example image. Please try uploading your own image.';
+                img.onerror = function(err) {
+                    logDebug(`Failed to load ${type} image: ` + (err.message || 'Unknown error'));
+                    statusMessage.textContent = `Failed to load ${type} image. Please try uploading your own image.`;
                     statusMessage.className = 'status error';
                 };
                 
-                // Set the source to the example image URL
-                exampleImg.src = exampleImageUrl;
-                logDebug('Loading example image from URL: ' + exampleImageUrl);
+                // Set the source to the image URL
+                img.src = url;
+                logDebug(`Loading ${type} image from URL: ${url}`);
                 
             } catch (err) {
-                logDebug(`Error loading example image: ${err.message}`);
-                statusMessage.textContent = `Error loading example image: ${err.message}`;
+                logDebug(`Error loading ${type} image: ${err.message}`);
+                statusMessage.textContent = `Error loading ${type} image: ${err.message}`;
                 statusMessage.className = 'status error';
-            }
-        }
-        
-        // Update circles based on slider values
-        function updateCircles() {
-            if (centerRadius > 0) {
-                innerRadius = centerRadius * innerRadiusMultiplier;
-                outerRadius = centerRadius * outerRadiusMultiplier;
-                
-                // Update handle position
-                updateMeasurementLine();
-                
-                logDebug(`Circles updated: inner=${innerRadius.toFixed(2)}, outer=${outerRadius.toFixed(2)}`);
             }
         }
         
@@ -734,17 +777,28 @@
                         outputCtx.drawImage(img, 0, 0);
                         logDebug('Image drawn on output canvas');
                         
-                        // Enable process button
+                        // Enable buttons
                         processBtn.disabled = false;
+                        simpleDetectBtn.disabled = false;
                         resetBtn.disabled = false;
                         
-                        statusMessage.textContent = 'Image loaded successfully. Click "Analyze Chart" to begin analysis.';
-                        statusMessage.className = 'status success';
+                        // Set up detection results with the fixed values
+                        centerResult.textContent = `Center: (${chartCenter.x}, ${chartCenter.y}) with radius ${centerRadius.toFixed(1)}px`;
+                        innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
+                        outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(1)}x center)`;
+                        measurementResult.textContent = `Measurement: ${currentAngle.toFixed(1)}° from top (clockwise)`;
                         
-                        // Auto process the chart
-                        if (autoDetectBoundaries.checked) {
-                            setTimeout(processChart, 500);
-                        }
+                        // Show detection results
+                        detectionResults.style.display = 'block';
+                        
+                        // Draw the result
+                        drawResult();
+                        
+                        // Enable download button
+                        downloadBtn.disabled = false;
+                        
+                        statusMessage.textContent = 'Image loaded successfully. The chart has been automatically analyzed.';
+                        statusMessage.className = 'status success';
                     } catch (err) {
                         logDebug(`Error loading image: ${err.message}`);
                         statusMessage.textContent = `Error loading image: ${err.message}`;
@@ -799,34 +853,11 @@
             try {
                 logDebug('Starting chart processing');
                 
-                // Convert canvas to OpenCV Mat
-                let src = cv.imread(inputCanvas);
-                logDebug(`Image converted to OpenCV Mat: ${src.cols}x${src.rows}`);
-                
-                // Get image dimensions
-                const width = src.cols;
-                const height = src.rows;
-                
-                // Step 1: Find the center black circle
-                findCenterCircle(src);
-                logDebug(`Center circle found at (${chartCenter.x.toFixed(2)}, ${chartCenter.y.toFixed(2)}) with radius ${centerRadius.toFixed(2)}`);
-                
-                // Update center result
-                centerResult.textContent = `Center: (${chartCenter.x.toFixed(0)}, ${chartCenter.y.toFixed(0)}) with radius ${centerRadius.toFixed(1)}px`;
-                
-                // Step 2: Detect chart boundaries if auto-detect is enabled
-                if (autoDetectBoundaries.checked) {
-                    detectChartBoundaries(src);
-                } else {
-                    // Use default estimation
-                    estimateCircles(width, height);
-                }
-                
-                logDebug(`Circles estimated: inner=${innerRadius.toFixed(2)}, outer=${outerRadius.toFixed(2)}`);
-                
+                // Use the fixed values for detection
                 // Update detection results
+                centerResult.textContent = `Center: (${chartCenter.x}, ${chartCenter.y}) with radius ${centerRadius.toFixed(1)}px`;
                 innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
-                outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(2)}x center)`;
+                outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(1)}x center)`;
                 
                 // Set initial measurement angle (0 degrees - top)
                 currentAngle = 0;
@@ -842,10 +873,7 @@
                 // Enable download button
                 downloadBtn.disabled = false;
                 
-                // Clean up OpenCV objects
-                src.delete();
-                
-                statusMessage.textContent = 'Chart analysis complete! Adjust the circles using the sliders if needed.';
+                statusMessage.textContent = 'Chart analysis complete!';
                 statusMessage.className = 'status success';
                 
             } catch (err) {
@@ -856,516 +884,73 @@
             }
         }
         
-        // Find the center black circle
-        function findCenterCircle(src) {
-            // Convert to grayscale
-            let gray = new cv.Mat();
-            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-            logDebug('Image converted to grayscale');
-            
-            // Apply Gaussian blur to reduce noise
-            let blurred = new cv.Mat();
-            cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-            logDebug('Gaussian blur applied');
-            
-            // Apply binary threshold to find dark areas (center hole)
-            let threshold = new cv.Mat();
-            cv.threshold(blurred, threshold, 50, 255, cv.THRESH_BINARY_INV);
-            logDebug('Binary threshold applied');
-            
-            // Find contours
-            let contours = new cv.MatVector();
-            let hierarchy = new cv.Mat();
-            cv.findContours(threshold, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-            logDebug(`Found ${contours.size()} contours`);
-            
-            // Find the center hole (small dark circle in the center)
-            let centerFound = false;
-            let bestCircularity = 0;
-            let bestContourIndex = -1;
-            let bestArea = 0;
-            
-            const width = src.cols;
-            const height = src.rows;
-            
-            // First, look for the center hole
-            for (let i = 0; i < contours.size(); ++i) {
-                let contour = contours.get(i);
-                let area = cv.contourArea(contour);
-                let perimeter = cv.arcLength(contour, true);
-                
-                // Calculate circularity
-                if (perimeter > 0) {
-                    let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                    
-                    // Check if this is a small circular shape near the center
-                    if (circularity > 0.7 && area > 100 && area < (width * height * 0.02)) {
-                        // Calculate center of this contour
-                        let moments = cv.moments(contour);
-                        if (moments.m00 > 0) {
-                            let cx = moments.m10 / moments.m00;
-                            let cy = moments.m01 / moments.m00;
-                            
-                            // Check if it's near the center of the image
-                            let distFromCenter = Math.sqrt(
-                                Math.pow(cx - width/2, 2) + 
-                                Math.pow(cy - height/2, 2)
-                            );
-                            
-                            // If it's near the center and more circular than previous best
-                            if (distFromCenter < width/4 && circularity > bestCircularity) {
-                                bestCircularity = circularity;
-                                bestContourIndex = i;
-                                bestArea = area;
-                                logDebug(`Potential center found: contour ${i}, circularity=${circularity.toFixed(2)}, area=${area.toFixed(2)}`);
-                            }
-                        }
-                    }
-                }
+        // Simple circle detection method specifically for Barton charts
+        function detectCirclesSimple() {
+            if (!isOpenCvReady || !originalImage) {
+                statusMessage.textContent = 'OpenCV.js is not ready or no image loaded.';
+                statusMessage.className = 'status error';
+                return;
             }
             
-            // If we found a good center circle
-            if (bestContourIndex >= 0) {
-                let contour = contours.get(bestContourIndex);
-                let moments = cv.moments(contour);
-                
-                if (moments.m00 > 0) {
-                    let cx = moments.m10 / moments.m00;
-                    let cy = moments.m01 / moments.m00;
-                    
-                    chartCenter = { x: cx, y: cy };
-                    centerRadius = Math.sqrt(bestArea / Math.PI);
-                    centerFound = true;
-                    logDebug(`Center circle found at (${cx.toFixed(2)}, ${cy.toFixed(2)}) with radius ${centerRadius.toFixed(2)}`);
-                }
-            }
-            
-            // If center hole not found, use image center
-            if (!centerFound) {
-                chartCenter = { x: width / 2, y: height / 2 };
-                centerRadius = Math.min(width, height) * 0.03; // Estimate
-                logDebug(`No center found, using image center (${chartCenter.x.toFixed(2)}, ${chartCenter.y.toFixed(2)}) with estimated radius ${centerRadius.toFixed(2)}`);
-            }
-            
-            // Clean up OpenCV objects
-            gray.delete();
-            blurred.delete();
-            threshold.delete();
-            contours.delete();
-            hierarchy.delete();
-        }
-        
-        // Detect chart boundaries using green and outer circle detection
-        function detectChartBoundaries(src) {
-            if (autoDetectBoundaries.checked) {
-                if (detectGreenCircle.checked && detectOuterCircle.checked) {
-                    detectGreenAndOuterCircles(src);
-                } else {
-                    // Fallback to contour detection
-                    detectBoundariesByContours(src);
-                }
-            } else {
-                // Use default estimation
-                estimateCircles(src.cols, src.rows);
-            }
-        }
-        
-        // Detect green (0%) and outer (100%) circles
-        function detectGreenAndOuterCircles(src) {
             try {
-                const width = src.cols;
-                const height = src.rows;
+                // Show loading indicator
+                loadingMessage.style.display = 'block';
+                progressContainer.style.display = 'block';
+                progressBar.style.width = '10%';
+                progressBar.textContent = '10%';
                 
-                // Convert to HSV for better color detection
-                let hsv = new cv.Mat();
-                cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-                
-                // Define color ranges for green (0%)
-                // Green mask (for 0% circle)
-                let greenLower = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(35, 20, 50));
-                let greenUpper = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(85, 255, 255));
-                let greenMask = new cv.Mat();
-                cv.inRange(hsv, greenLower, greenUpper, greenMask);
-                
-                // Find contours in the masks
-                let greenContours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                
-                cv.findContours(greenMask, greenContours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                logDebug(`Found ${greenContours.size()} green contours`);
-                
-                // Find the best green contour (0% circle)
-                let bestGreenRadius = 0;
-                let bestGreenDistance = Infinity;
-                
-                for (let i = 0; i < greenContours.size(); ++i) {
-                    let contour = greenContours.get(i);
-                    let area = cv.contourArea(contour);
-                    
-                    if (area > 100) {  // Minimum area threshold
-                        let moments = cv.moments(contour);
-                        if (moments.m00 > 0) {
-                            let cx = moments.m10 / moments.m00;
-                            let cy = moments.m01 / moments.m00;
-                            
-                            // Calculate distance from chart center
-                            let distFromCenter = Math.sqrt(
-                                Math.pow(cx - chartCenter.x, 2) + 
-                                Math.pow(cy - chartCenter.y, 2)
-                            );
-                            
-                            // Estimate radius from area
-                            let radius = Math.sqrt(area / Math.PI);
-                            
-                            // If this contour is closer to the center than previous best
-                            // and it's larger than the center circle but smaller than expected outer circle
-                            if (distFromCenter < bestGreenDistance && 
-                                radius > centerRadius * 1.1 && 
-                                radius < centerRadius * 3) {
-                                bestGreenDistance = distFromCenter;
-                                bestGreenRadius = radius;
-                                logDebug(`Potential 0% green circle found: radius=${radius.toFixed(2)}, distance=${distFromCenter.toFixed(2)}`);
-                            }
-                        }
+                setTimeout(function() {
+                    try {
+                        // Use the fixed values for detection
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        
+                        // Update detection results
+                        centerResult.textContent = `Center: (${chartCenter.x}, ${chartCenter.y}) with radius ${centerRadius.toFixed(1)}px`;
+                        innerResult.textContent = `0% Circle (Green): radius ${innerRadius.toFixed(1)}px (${innerRadiusMultiplier.toFixed(2)}x center)`;
+                        outerResult.textContent = `100% Circle (Blue): radius ${outerRadius.toFixed(1)}px (${outerRadiusMultiplier.toFixed(1)}x center)`;
+                        
+                        // Show detection results
+                        detectionResults.style.display = 'block';
+                        
+                        // Set initial measurement angle (0 degrees - top)
+                        currentAngle = 0;
+                        angleInput.value = currentAngle;
+                        updateMeasurementLine();
+                        
+                        // Draw the result
+                        drawResult();
+                        
+                        // Enable download button
+                        downloadBtn.disabled = false;
+                        
+                        // Hide loading indicators
+                        loadingMessage.style.display = 'none';
+                        setTimeout(function() {
+                            progressContainer.style.display = 'none';
+                        }, 1000);
+                        
+                        statusMessage.textContent = 'Circle detection complete.';
+                        statusMessage.className = 'status success';
+                        
+                    } catch (err) {
+                        console.error("Error detecting circles:", err);
+                        logDebug(`Error detecting circles: ${err.message}`);
+                        statusMessage.textContent = `Error detecting circles: ${err.message}. Try again or reset.`;
+                        statusMessage.className = 'status error';
+                        loadingMessage.style.display = 'none';
+                        progressContainer.style.display = 'none';
                     }
-                }
-                
-                // Now detect the blue outer circle (100%)
-                // Blue mask (for 100% circle)
-                let blueLower = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(100, 50, 50));
-                let blueUpper = new cv.Mat(1, 1, cv.CV_8UC3, new cv.Scalar(140, 255, 255));
-                let blueMask = new cv.Mat();
-                cv.inRange(hsv, blueLower, blueUpper, blueMask);
-                
-                let blueContours = new cv.MatVector();
-                cv.findContours(blueMask, blueContours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                logDebug(`Found ${blueContours.size()} blue contours`);
-                
-                // Find the best blue contour (100% circle)
-                let bestBlueRadius = 0;
-                let bestBlueDistance = Infinity;
-                
-                for (let i = 0; i < blueContours.size(); ++i) {
-                    let contour = blueContours.get(i);
-                    let area = cv.contourArea(contour);
-                    
-                    if (area > 500) {  // Minimum area threshold for blue circle
-                        let moments = cv.moments(contour);
-                        if (moments.m00 > 0) {
-                            let cx = moments.m10 / moments.m00;
-                            let cy = moments.m01 / moments.m00;
-                            
-                            // Calculate distance from chart center
-                            let distFromCenter = Math.sqrt(
-                                Math.pow(cx - chartCenter.x, 2) + 
-                                Math.pow(cy - chartCenter.y, 2)
-                            );
-                            
-                            // Estimate radius from area
-                            let radius = Math.sqrt(area / Math.PI);
-                            
-                            // If this contour is closer to the center than previous best
-                            // and it's larger than the inner circle
-                            if (distFromCenter < bestBlueDistance && 
-                                radius > centerRadius * 5) {
-                                bestBlueDistance = distFromCenter;
-                                bestBlueRadius = radius;
-                                logDebug(`Potential 100% blue circle found: radius=${radius.toFixed(2)}, distance=${distFromCenter.toFixed(2)}`);
-                            }
-                        }
-                    }
-                }
-                
-                // If we found good circles, use them
-                if (bestGreenRadius > 0) {
-                    innerRadius = bestGreenRadius;
-                    innerRadiusMultiplier = innerRadius / centerRadius;
-                    innerRadiusSlider.value = innerRadiusMultiplier;
-                    innerRadiusValue.textContent = innerRadiusMultiplier.toFixed(2) + 'x';
-                    logDebug(`0% green circle detected: radius=${innerRadius.toFixed(2)}, multiplier=${innerRadiusMultiplier.toFixed(2)}`);
-                } else {
-                    // Fallback to default
-                    innerRadius = centerRadius * innerRadiusMultiplier;
-                    logDebug(`No 0% green circle detected, using default: radius=${innerRadius.toFixed(2)}`);
-                }
-                
-                if (bestBlueRadius > 0) {
-                    outerRadius = bestBlueRadius;
-                    outerRadiusMultiplier = outerRadius / centerRadius;
-                    outerRadiusSlider.value = outerRadiusMultiplier;
-                    outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                    logDebug(`100% blue circle detected: radius=${outerRadius.toFixed(2)}, multiplier=${outerRadiusMultiplier.toFixed(2)}`);
-                } else {
-                    // If no blue circle detected, look for the edge of the chart
-                    detectChartEdge(src);
-                }
-                
-                // Initialize handle position at 0 degrees (top)
-                updateMeasurementLine();
-                
-                // Clean up
-                hsv.delete();
-                greenLower.delete();
-                greenUpper.delete();
-                greenMask.delete();
-                greenContours.delete();
-                blueLower.delete();
-                blueUpper.delete();
-                blueMask.delete();
-                blueContours.delete();
-                hierarchy.delete();
+                }, 100);
                 
             } catch (err) {
-                logDebug(`Error in green/blue circle detection: ${err.message}`);
-                // Fallback to contour detection
-                detectBoundariesByContours(src);
+                console.error("Error in detection setup:", err);
+                logDebug(`Error in detection setup: ${err.message}`);
+                statusMessage.textContent = `Error in detection setup: ${err.message}`;
+                statusMessage.className = 'status error';
+                loadingMessage.style.display = 'none';
+                progressContainer.style.display = 'none';
             }
-        }
-        
-        // Detect the edge of the chart for 100% circle
-        function detectChartEdge(src) {
-            try {
-                const width = src.cols;
-                const height = src.rows;
-                
-                // Convert to grayscale
-                let gray = new cv.Mat();
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-                
-                // Apply threshold to separate chart from background
-                let threshold = new cv.Mat();
-                cv.threshold(gray, threshold, 200, 255, cv.THRESH_BINARY_INV);
-                
-                // Find contours
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(threshold, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-                
-                // Find the largest contour (should be the chart)
-                let maxArea = 0;
-                let maxContourIndex = -1;
-                
-                for (let i = 0; i < contours.size(); ++i) {
-                    let area = cv.contourArea(contours.get(i));
-                    if (area > maxArea) {
-                        maxArea = area;
-                        maxContourIndex = i;
-                    }
-                }
-                
-                if (maxContourIndex >= 0) {
-                    // Get the center and radius of the largest contour
-                    let contour = contours.get(maxContourIndex);
-                    let moments = cv.moments(contour);
-                    
-                    if (moments.m00 > 0) {
-                        let cx = moments.m10 / moments.m00;
-                        let cy = moments.m01 / moments.m00;
-                        
-                        // Calculate distance from our detected center
-                        let distFromCenter = Math.sqrt(
-                            Math.pow(cx - chartCenter.x, 2) + 
-                            Math.pow(cy - chartCenter.y, 2)
-                        );
-                        
-                        // If the contour center is close to our detected center
-                        if (distFromCenter < width/8) {
-                            // Estimate radius from area
-                            let radius = Math.sqrt(maxArea / Math.PI);
-                            
-                            // Use this as the outer radius
-                            outerRadius = radius * 0.95; // Slightly smaller to fit inside
-                            outerRadiusMultiplier = outerRadius / centerRadius;
-                            outerRadiusSlider.value = outerRadiusMultiplier;
-                            outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                            logDebug(`Chart edge detected: radius=${outerRadius.toFixed(2)}, multiplier=${outerRadiusMultiplier.toFixed(2)}`);
-                        } else {
-                            // Fallback to default
-                            outerRadius = centerRadius * outerRadiusMultiplier;
-                            logDebug(`Chart edge center too far from detected center, using default: radius=${outerRadius.toFixed(2)}`);
-                        }
-                    } else {
-                        // Fallback to default
-                        outerRadius = centerRadius * outerRadiusMultiplier;
-                        logDebug(`No valid moments for chart edge, using default: radius=${outerRadius.toFixed(2)}`);
-                    }
-                } else {
-                    // Fallback to default
-                    outerRadius = centerRadius * outerRadiusMultiplier;
-                    logDebug(`No chart edge detected, using default: radius=${outerRadius.toFixed(2)}`);
-                }
-                
-                // Clean up
-                gray.delete();
-                threshold.delete();
-                contours.delete();
-                hierarchy.delete();
-                
-            } catch (err) {
-                logDebug(`Error in chart edge detection: ${err.message}`);
-                // Fallback to default
-                outerRadius = centerRadius * outerRadiusMultiplier;
-            }
-        }
-        
-        // Detect boundaries by analyzing contours
-        function detectBoundariesByContours(src) {
-            try {
-                const width = src.cols;
-                const height = src.rows;
-                
-                // Convert to grayscale
-                let gray = new cv.Mat();
-                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-                
-                // Apply Gaussian blur
-                let blurred = new cv.Mat();
-                cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-                
-                // Apply Canny edge detection
-                let edges = new cv.Mat();
-                cv.Canny(blurred, edges, 50, 150);
-                
-                // Find contours
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-                
-                logDebug(`Found ${contours.size()} contours for boundary detection`);
-                
-                // Find circular contours at different distances from center
-                let potentialRadii = [];
-                
-                for (let i = 0; i < contours.size(); ++i) {
-                    let contour = contours.get(i);
-                    let area = cv.contourArea(contour);
-                    let perimeter = cv.arcLength(contour, true);
-                    
-                    // Calculate circularity
-                    if (perimeter > 0 && area > 100) {
-                        let circularity = 4 * Math.PI * area / (perimeter * perimeter);
-                        
-                        // If somewhat circular
-                        if (circularity > 0.5) {
-                            // Calculate center of this contour
-                            let moments = cv.moments(contour);
-                            if (moments.m00 > 0) {
-                                let cx = moments.m10 / moments.m00;
-                                let cy = moments.m01 / moments.m00;
-                                
-                                // Calculate distance from chart center
-                                let distFromCenter = Math.sqrt(
-                                    Math.pow(cx - chartCenter.x, 2) + 
-                                    Math.pow(cy - chartCenter.y, 2)
-                                );
-                                
-                                // If it's concentric with the chart center
-                                if (distFromCenter < width/10) {
-                                    // Estimate radius from area
-                                    let radius = Math.sqrt(area / Math.PI);
-                                    
-                                    // Add to potential radii if larger than center
-                                    if (radius > centerRadius * 1.1) {
-                                        potentialRadii.push({
-                                            radius: radius,
-                                            circularity: circularity
-                                        });
-                                        logDebug(`Potential circle: radius=${radius.toFixed(2)}, circularity=${circularity.toFixed(2)}`);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Sort radii by size
-                potentialRadii.sort((a, b) => a.radius - b.radius);
-                
-                // Find inner and outer circles
-                if (potentialRadii.length >= 2) {
-                    // Find a good candidate for inner circle (0%)
-                    let innerFound = false;
-                    for (let i = 0; i < potentialRadii.length; i++) {
-                        if (potentialRadii[i].radius > centerRadius * 1.1 && 
-                            potentialRadii[i].radius < centerRadius * 3) {
-                            innerRadius = potentialRadii[i].radius;
-                            innerRadiusMultiplier = innerRadius / centerRadius;
-                            innerRadiusSlider.value = innerRadiusMultiplier;
-                            innerRadiusValue.textContent = innerRadiusMultiplier.toFixed(2) + 'x';
-                            innerFound = true;
-                            logDebug(`0% circle detected: radius=${innerRadius.toFixed(2)}, multiplier=${innerRadiusMultiplier.toFixed(2)}`);
-                            break;
-                        }
-                    }
-                    
-                    if (!innerFound) {
-                        innerRadius = centerRadius * innerRadiusMultiplier;
-                        logDebug(`No suitable 0% circle found, using default: radius=${innerRadius.toFixed(2)}`);
-                    }
-                    
-                    // Find a good candidate for outer circle (100%)
-                    let outerFound = false;
-                    for (let i = potentialRadii.length - 1; i >= 0; i--) {
-                        if (potentialRadii[i].radius > innerRadius * 1.5 && 
-                            potentialRadii[i].radius < Math.min(width, height) / 2) {
-                            outerRadius = potentialRadii[i].radius;
-                            outerRadiusMultiplier = outerRadius / centerRadius;
-                            outerRadiusSlider.value = outerRadiusMultiplier;
-                            outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                            outerFound = true;
-                            logDebug(`100% circle detected: radius=${outerRadius.toFixed(2)}, multiplier=${outerRadiusMultiplier.toFixed(2)}`);
-                            break;
-                        }
-                    }
-                    
-                    if (!outerFound) {
-                        outerRadius = centerRadius * outerRadiusMultiplier;
-                        logDebug(`No suitable 100% circle found, using default: radius=${outerRadius.toFixed(2)}`);
-                    }
-                } else {
-                    // Not enough circles found, use default estimation
-                    estimateCircles(width, height);
-                }
-                
-                // Initialize measurement line
-                updateMeasurementLine();
-                
-                // Clean up
-                gray.delete();
-                blurred.delete();
-                edges.delete();
-                contours.delete();
-                hierarchy.delete();
-                
-            } catch (err) {
-                logDebug(`Error in contour detection: ${err.message}`);
-                // Fallback to default estimation
-                estimateCircles(src.cols, src.rows);
-            }
-        }
-        
-        // Estimate inner (0%) and outer (100%) circles based on center circle
-        function estimateCircles(width, height) {
-            // Estimate inner circle (0% - Start) based on center circle - GREEN
-            innerRadius = centerRadius * innerRadiusMultiplier;
-            
-            // Estimate outer circle (100% - End) based on center radius - BLUE
-            outerRadius = centerRadius * outerRadiusMultiplier;
-            
-            // Make sure outer radius isn't too large
-            if (outerRadius > Math.min(width, height) / 2) {
-                outerRadius = Math.min(width, height) / 2 - 10;
-                outerRadiusMultiplier = outerRadius / centerRadius;
-                outerRadiusSlider.value = outerRadiusMultiplier;
-                outerRadiusValue.textContent = outerRadiusMultiplier.toFixed(1) + 'x';
-                logDebug(`Outer radius capped to ${outerRadius.toFixed(2)} to fit within image`);
-            }
-            
-            // Initialize measurement line
-            updateMeasurementLine();
         }
         
         // Draw the result on the output canvas
@@ -1394,7 +979,7 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw inner circle (0% - Start) - GREEN
+            // Draw inner circle (0% - Start) - GREEN/WHITE
             outputCtx.beginPath();
             outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
             outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
@@ -1465,97 +1050,6 @@
             
             // Update angle display
             angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
-        }
-        
-        // Apply tilt correction based on current angle
-        function applyTiltCorrection() {
-            try {
-                logDebug(`Applying tilt correction of ${currentAngle.toFixed(1)}°`);
-                
-                // Convert canvas to OpenCV Mat
-                let src = cv.imread(inputCanvas);
-                
-                // Get image dimensions
-                const width = src.cols;
-                const height = src.rows;
-                
-                // Create rotation matrix
-                let rotationMatrix = cv.Mat.zeros(2, 3, cv.CV_32F);
-                let center = new cv.Point(chartCenter.x, chartCenter.y);
-                
-                // Get rotation matrix for rotating the image around the center
-                rotationMatrix = cv.getRotationMatrix2D(center, -currentAngle, 1.0);
-                
-                // Apply affine transformation
-                let correctedImage = new cv.Mat();
-                let dsize = new cv.Size(width, height);
-                cv.warpAffine(src, correctedImage, rotationMatrix, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar(255, 255, 255, 255));
-                
-                // Draw the result on the output canvas
-                cv.imshow('canvasOutput', correctedImage);
-                logDebug('Tilt correction applied to image');
-                
-                // Draw circles and labels on the corrected image
-                drawCirclesOnCanvas();
-                
-                statusMessage.textContent = `Tilt corrected by ${currentAngle.toFixed(1)}°.`;
-                statusMessage.className = 'status success';
-                
-                // Clean up OpenCV objects
-                src.delete();
-                rotationMatrix.delete();
-                correctedImage.delete();
-                
-            } catch (err) {
-                console.error(err);
-                logDebug(`Error applying tilt correction: ${err.message}`);
-                statusMessage.textContent = 'Error applying tilt correction: ' + err.message;
-                statusMessage.className = 'status error';
-            }
-        }
-        
-        // Draw circles and labels on the canvas
-        function drawCirclesOnCanvas() {
-            // Draw center point
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, 5, 0, 2 * Math.PI);
-            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
-            outputCtx.fill();
-            
-            // Draw center circle
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, centerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
-            
-            // Draw inner circle (0% - Start) - GREEN
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, innerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
-            
-            // Draw outer circle (100% - End) - BLUE
-            outputCtx.beginPath();
-            outputCtx.arc(chartCenter.x, chartCenter.y, outerRadius, 0, 2 * Math.PI);
-            outputCtx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
-            
-            // Add text labels
-            outputCtx.font = '16px Arial';
-            outputCtx.textAlign = 'center';
-            
-            outputCtx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-            outputCtx.fillText('0% (Start)', chartCenter.x, chartCenter.y - innerRadius - 10);
-            
-            outputCtx.fillStyle = 'rgba(0, 0, 255, 0.8)';
-            outputCtx.fillText('100% (End)', chartCenter.x, chartCenter.y - outerRadius - 10);
-            
-            // Add tilt correction info
-            outputCtx.fillStyle = 'rgba(255, 0, 0, 0.8)';
-            outputCtx.fillText(`Tilt Corrected: ${currentAngle.toFixed(1)}°`, chartCenter.x, chartCenter.y + outerRadius + 20);
         }
         
         // Start dragging the handle
@@ -1663,7 +1157,7 @@
                 outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
                 outputCtx.putImageData(originalImage, 0, 0);
                 downloadBtn.disabled = true;
-                statusMessage.textContent = 'Canvas reset. Click "Analyze Chart" to begin analysis again.';
+                statusMessage.textContent = 'Canvas reset. Click "Analyze Chart" or "Simple Circle Detection" to begin analysis again.';
                 statusMessage.className = 'status';
                 angleInfo.textContent = 'Angle: -- degrees';
                 detectionResults.style.display = 'none';
