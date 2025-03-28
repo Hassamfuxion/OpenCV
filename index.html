@@ -265,6 +265,23 @@
             border-left: 4px solid #3498db;
         }
 
+        .curve-preset {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .curve-preset button {
+            background-color: #9b59b6;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+
+        .curve-preset button:hover {
+            background-color: #8e44ad;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -389,10 +406,34 @@
         </div>
 
         <div class="curve-controls">
+            <h3>Arc Curve Controls</h3>
             <div class="angle-input">
                 <label for="curvatureSlider">Curve Intensity:</label>
                 <input type="range" id="curvatureSlider" min="0" max="100" value="70" step="1">
                 <span id="curvatureValue">70%</span>
+            </div>
+            <div class="angle-input">
+                <label for="curveTypeSelect">Curve Type:</label>
+                <select id="curveTypeSelect">
+                    <option value="quadratic">Simple Curve (Quadratic)</option>
+                    <option value="cubic">Complex Curve (Cubic)</option>
+                    <option value="spiral">Spiral Curve</option>
+                    <option value="graph">Graph-Matching Curve</option>
+                </select>
+            </div>
+            <div class="angle-input">
+                <label for="curveDirectionSelect">Curve Direction:</label>
+                <select id="curveDirectionSelect">
+                    <option value="clockwise">Clockwise</option>
+                    <option value="counterclockwise">Counter-Clockwise</option>
+                    <option value="auto">Auto (Based on Angle)</option>
+                </select>
+            </div>
+            <div class="curve-preset">
+                <button id="presetCurve1">Barton Chart Curve</button>
+                <button id="presetCurve2">S-Curve</button>
+                <button id="presetCurve3">Logarithmic</button>
+                <button id="presetCurve4">Exponential</button>
             </div>
             <div class="angle-input">
                 <label for="startTimeInput">Start Time:</label>
@@ -471,6 +512,12 @@
         let lineColorInput = document.getElementById('lineColorInput');
         let curvatureSlider = document.getElementById('curvatureSlider');
         let curvatureValue = document.getElementById('curvatureValue');
+        let curveTypeSelect = document.getElementById('curveTypeSelect');
+        let curveDirectionSelect = document.getElementById('curveDirectionSelect');
+        let presetCurve1 = document.getElementById('presetCurve1');
+        let presetCurve2 = document.getElementById('presetCurve2');
+        let presetCurve3 = document.getElementById('presetCurve3');
+        let presetCurve4 = document.getElementById('presetCurve4');
         let startTimeInput = document.getElementById('startTimeInput');
         let endTimeInput = document.getElementById('endTimeInput');
         let setTimeBtn = document.getElementById('setTimeBtn');
@@ -499,7 +546,17 @@
         let lineWidth = 3;
         let lineColor = '#000000';
         let curvatureIntensity = 0.7; // Default curve intensity (0-1)
+        let curveType = 'quadratic'; // Default curve type
+        let curveDirection = 'auto'; // Default curve direction
         let detectedCircles = []; // Array to store all detected circles
+        
+        // Curve control points for advanced curves
+        let controlPoints = {
+            p1: { x: 0, y: 0 },
+            p2: { x: 0, y: 0 },
+            p3: { x: 0, y: 0 },
+            p4: { x: 0, y: 0 }
+        };
         
         // Standard image dimensions (matching example image)
         const standardWidth = 1200;
@@ -701,6 +758,77 @@
                 }
             });
             
+            // Curve type select event
+            curveTypeSelect.addEventListener('change', function() {
+                curveType = this.value;
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug(`Curve type changed to: ${curveType}`);
+            });
+            
+            // Curve direction select event
+            curveDirectionSelect.addEventListener('change', function() {
+                curveDirection = this.value;
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug(`Curve direction changed to: ${curveDirection}`);
+            });
+            
+            // Curve preset buttons
+            presetCurve1.addEventListener('click', function() {
+                // Barton Chart Curve preset
+                curveTypeSelect.value = 'graph';
+                curveDirectionSelect.value = 'clockwise';
+                curvatureSlider.value = 85;
+                curvatureIntensity = 0.85;
+                curvatureValue.textContent = '85%';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug('Applied Barton Chart Curve preset');
+            });
+            
+            presetCurve2.addEventListener('click', function() {
+                // S-Curve preset
+                curveTypeSelect.value = 'cubic';
+                curveDirectionSelect.value = 'auto';
+                curvatureSlider.value = 60;
+                curvatureIntensity = 0.6;
+                curvatureValue.textContent = '60%';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug('Applied S-Curve preset');
+            });
+            
+            presetCurve3.addEventListener('click', function() {
+                // Logarithmic preset
+                curveTypeSelect.value = 'spiral';
+                curveDirectionSelect.value = 'clockwise';
+                curvatureSlider.value = 75;
+                curvatureIntensity = 0.75;
+                curvatureValue.textContent = '75%';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug('Applied Logarithmic preset');
+            });
+            
+            presetCurve4.addEventListener('click', function() {
+                // Exponential preset
+                curveTypeSelect.value = 'spiral';
+                curveDirectionSelect.value = 'counterclockwise';
+                curvatureSlider.value = 90;
+                curvatureIntensity = 0.9;
+                curvatureValue.textContent = '90%';
+                if (originalImage) {
+                    updateMeasurementLine();
+                }
+                logDebug('Applied Exponential preset');
+            });
+            
             // Set time range button
             setTimeBtn.addEventListener('click', function() {
                 const startTime = startTimeInput.value;
@@ -741,11 +869,19 @@
                 if (!isNaN(angle)) {
                     currentAngle = angle;
                     angleInput.value = angle;
+                    
+                    // Apply the Barton Chart Curve preset for best match to example
+                    curveTypeSelect.value = 'graph';
+                    curveDirectionSelect.value = 'clockwise';
+                    curvatureSlider.value = 85;
+                    curvatureIntensity = 0.85;
+                    curvatureValue.textContent = '85%';
+                    
                     updateMeasurementLine();
                     
-                    statusMessage.textContent = `Arc automatically placed at ${angle}°`;
+                    statusMessage.textContent = `Arc automatically placed at ${angle}° with graph-matching curve`;
                     statusMessage.className = 'status success';
-                    logDebug(`Auto arc placed at angle: ${angle}°`);
+                    logDebug(`Auto arc placed at angle: ${angle}° with graph-matching curve`);
                 }
             } catch (err) {
                 console.error("Error placing arc:", err);
@@ -1022,6 +1158,14 @@
                 // Set initial measurement angle (0 degrees - top)
                 currentAngle = 0;
                 angleInput.value = currentAngle;
+                
+                // Apply the Barton Chart Curve preset for best match to example
+                curveTypeSelect.value = 'graph';
+                curveDirectionSelect.value = 'clockwise';
+                curvatureSlider.value = 85;
+                curvatureIntensity = 0.85;
+                curvatureValue.textContent = '85%';
+                
                 updateMeasurementLine();
                 
                 detectionResults.style.display = 'block';
@@ -1076,6 +1220,14 @@
                         // Set initial measurement angle (0 degrees - top)
                         currentAngle = 0;
                         angleInput.value = currentAngle;
+                        
+                        // Apply the Barton Chart Curve preset for best match to example
+                        curveTypeSelect.value = 'graph';
+                        curveDirectionSelect.value = 'clockwise';
+                        curvatureSlider.value = 85;
+                        curvatureIntensity = 0.85;
+                        curvatureValue.textContent = '85%';
+                        
                         updateMeasurementLine();
                         
                         // Draw the result
@@ -1153,47 +1305,8 @@
             outputCtx.lineWidth = 2;
             outputCtx.stroke();
             
-            // Draw curved measurement line
-            outputCtx.beginPath();
-            
-            // Calculate the end angle in radians
-            const endAngle = currentAngle * (Math.PI / 180);
-            
-            // Draw a curved arc from center to outer edge
-            // Use a Bezier curve to create a more pronounced curve
-            const startX = chartCenter.x;
-            const startY = chartCenter.y;
-            const endX = chartCenter.x + Math.sin(endAngle) * outerRadius;
-            const endY = chartCenter.y - Math.cos(endAngle) * outerRadius;
-            
-            // Calculate control points for the curve
-            // This creates a curved line that bends outward
-            const midRadius = centerRadius + (outerRadius - centerRadius) * 0.5;
-            const midAngle = endAngle * 0.5;
-            const curveFactor = curvatureIntensity; // Adjust this to control curve intensity
-            
-            // Calculate the midpoint with an offset to create the curve
-            const midX = chartCenter.x + Math.sin(midAngle) * midRadius * (1 + curveFactor);
-            const midY = chartCenter.y - Math.cos(midAngle) * midRadius * (1 + curveFactor);
-            
-            // Draw the curved line
-            outputCtx.moveTo(startX, startY);
-            outputCtx.quadraticCurveTo(midX, midY, endX, endY);
-            
-            outputCtx.strokeStyle = lineColor;
-            outputCtx.lineWidth = lineWidth;
-            outputCtx.stroke();
-            
-            // Draw handle at the end of the arc
-            handlePosition = { x: endX, y: endY };
-            
-            outputCtx.beginPath();
-            outputCtx.arc(handlePosition.x, handlePosition.y, handleRadius, 0, 2 * Math.PI);
-            outputCtx.fillStyle = lineColor;
-            outputCtx.fill();
-            outputCtx.strokeStyle = 'white';
-            outputCtx.lineWidth = 2;
-            outputCtx.stroke();
+            // Draw curved measurement line based on selected curve type
+            drawCurvedLine();
             
             // Add text labels
             outputCtx.font = '16px Arial';
@@ -1210,6 +1323,151 @@
             
             // Update angle display
             angleInfo.textContent = `Angle: ${currentAngle.toFixed(1)}° (0° at top, clockwise)`;
+        }
+        
+        // Draw curved line based on selected curve type
+        function drawCurvedLine() {
+            // Calculate the end angle in radians
+            const endAngle = currentAngle * (Math.PI / 180);
+            
+            // Start and end points
+            const startX = chartCenter.x;
+            const startY = chartCenter.y;
+            const endX = chartCenter.x + Math.sin(endAngle) * outerRadius;
+            const endY = chartCenter.y - Math.cos(endAngle) * outerRadius;
+            
+            // Determine curve direction
+            let actualDirection = curveDirection;
+            if (curveDirection === 'auto') {
+                // Automatically determine direction based on angle
+                actualDirection = (currentAngle > 90 && currentAngle < 270) ? 'counterclockwise' : 'clockwise';
+            }
+            
+            // Draw the appropriate curve type
+            outputCtx.beginPath();
+            outputCtx.moveTo(startX, startY);
+            
+            switch (curveType) {
+                case 'quadratic':
+                    // Simple quadratic curve
+                    const midRadius = centerRadius + (outerRadius - centerRadius) * 0.5;
+                    const midAngle = endAngle * 0.5;
+                    const curveFactor = curvatureIntensity;
+                    
+                    // Calculate the midpoint with an offset to create the curve
+                    const directionFactor = (actualDirection === 'clockwise') ? 1 : -1;
+                    const midX = chartCenter.x + Math.sin(midAngle) * midRadius * (1 + curveFactor * directionFactor);
+                    const midY = chartCenter.y - Math.cos(midAngle) * midRadius * (1 + curveFactor * directionFactor);
+                    
+                    // Draw the curved line
+                    outputCtx.quadraticCurveTo(midX, midY, endX, endY);
+                    break;
+                    
+                case 'cubic':
+                    // More complex cubic curve with two control points
+                    const cp1Radius = centerRadius + (outerRadius - centerRadius) * 0.3;
+                    const cp2Radius = centerRadius + (outerRadius - centerRadius) * 0.7;
+                    const cp1Angle = endAngle * 0.3;
+                    const cp2Angle = endAngle * 0.7;
+                    
+                    // Calculate control points
+                    const dirFactor = (actualDirection === 'clockwise') ? 1 : -1;
+                    const cp1X = chartCenter.x + Math.sin(cp1Angle) * cp1Radius * (1 + curvatureIntensity * 0.8 * dirFactor);
+                    const cp1Y = chartCenter.y - Math.cos(cp1Angle) * cp1Radius * (1 + curvatureIntensity * 0.8 * dirFactor);
+                    const cp2X = chartCenter.x + Math.sin(cp2Angle) * cp2Radius * (1 + curvatureIntensity * 1.2 * dirFactor);
+                    const cp2Y = chartCenter.y - Math.cos(cp2Angle) * cp2Radius * (1 + curvatureIntensity * 1.2 * dirFactor);
+                    
+                    // Draw the cubic curve
+                    outputCtx.bezierCurveTo(cp1X, cp1Y, cp2X, cp2Y, endX, endY);
+                    break;
+                    
+                case 'spiral':
+                    // Spiral-like curve
+                    const numPoints = 20;
+                    const points = [];
+                    
+                    // Generate points along a spiral path
+                    for (let i = 0; i <= numPoints; i++) {
+                        const t = i / numPoints;
+                        const angle = t * endAngle;
+                        const radius = centerRadius + (outerRadius - centerRadius) * t;
+                        const spiralFactor = (actualDirection === 'clockwise') ? 1 : -1;
+                        const spiralIntensity = curvatureIntensity * 0.5;
+                        
+                        // Add spiral effect
+                        const adjustedAngle = angle + (spiralFactor * spiralIntensity * Math.PI * t);
+                        
+                        const x = chartCenter.x + Math.sin(adjustedAngle) * radius;
+                        const y = chartCenter.y - Math.cos(adjustedAngle) * radius;
+                        
+                        points.push({ x, y });
+                    }
+                    
+                    // Draw the spiral curve
+                    outputCtx.moveTo(points[0].x, points[0].y);
+                    for (let i = 1; i < points.length; i++) {
+                        outputCtx.lineTo(points[i].x, points[i].y);
+                    }
+                    break;
+                    
+                case 'graph':
+                    // Graph-matching curve specifically for Barton charts
+                    // This uses a combination of techniques to match the graph pattern
+                    
+                    // First, determine the inner circle crossing point
+                    const innerAngle = endAngle * 0.4; // Adjust this to match where the curve crosses the inner circle
+                    const innerX = chartCenter.x + Math.sin(innerAngle) * innerRadius;
+                    const innerY = chartCenter.y - Math.cos(innerAngle) * innerRadius;
+                    
+                    // Determine a point between inner and outer circles
+                    const midRadius2 = innerRadius + (outerRadius - innerRadius) * 0.6;
+                    const midAngle2 = endAngle * 0.8;
+                    const midX2 = chartCenter.x + Math.sin(midAngle2) * midRadius2;
+                    const midY2 = chartCenter.y - Math.cos(midAngle2) * midRadius2;
+                    
+                    // Create a curve that bends to match the graph pattern
+                    // Use a cubic Bezier curve for more control
+                    const cp1Radius2 = centerRadius + (innerRadius - centerRadius) * 0.7;
+                    const cp1Angle2 = innerAngle * 0.7;
+                    const cp1X2 = chartCenter.x + Math.sin(cp1Angle2) * cp1Radius2;
+                    const cp1Y2 = chartCenter.y - Math.cos(cp1Angle2) * cp1Radius2;
+                    
+                    const cp2X2 = innerX + (midX2 - innerX) * 0.3;
+                    const cp2Y2 = innerY + (midY2 - innerY) * 0.3;
+                    
+                    // Draw the first segment (center to inner circle)
+                    outputCtx.bezierCurveTo(cp1X2, cp1Y2, innerX - (midX2 - innerX) * 0.1, innerY - (midY2 - innerY) * 0.1, innerX, innerY);
+                    
+                    // Draw the second segment (inner circle to outer circle)
+                    outputCtx.bezierCurveTo(
+                        innerX + (midX2 - innerX) * 0.4, 
+                        innerY + (midY2 - innerY) * 0.4,
+                        midX2 + (endX - midX2) * 0.3, 
+                        midY2 + (endY - midY2) * 0.3,
+                        endX, endY
+                    );
+                    break;
+                    
+                default:
+                    // Default to a straight line if no valid curve type
+                    outputCtx.lineTo(endX, endY);
+            }
+            
+            // Set line style and draw
+            outputCtx.strokeStyle = lineColor;
+            outputCtx.lineWidth = lineWidth;
+            outputCtx.stroke();
+            
+            // Draw handle at the end of the arc
+            handlePosition = { x: endX, y: endY };
+            
+            outputCtx.beginPath();
+            outputCtx.arc(handlePosition.x, handlePosition.y, handleRadius, 0, 2 * Math.PI);
+            outputCtx.fillStyle = lineColor;
+            outputCtx.fill();
+            outputCtx.strokeStyle = 'white';
+            outputCtx.lineWidth = 2;
+            outputCtx.stroke();
         }
         
         // Start dragging the handle
