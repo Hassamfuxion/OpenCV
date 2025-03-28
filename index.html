@@ -249,6 +249,22 @@
             color: white;
         }
 
+        .auto-arc-controls {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+
+        .image-info {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -272,6 +288,7 @@
             <input type="file" id="fileInput" accept="image/*">
             <button id="processBtn" disabled>Analyze Chart</button>
             <button id="simpleDetectBtn" disabled>Simple Circle Detection</button>
+            <button id="autoArcBtn" disabled>Auto Place Arc</button>
             <button id="resetBtn" disabled>Reset</button>
             <button id="downloadBtn" disabled>Download Result</button>
             <button id="debugBtn">Toggle Debug</button>
@@ -280,6 +297,13 @@
         <div class="example-image">
             <button id="loadExampleBtn">Load Example Image</button>
             <button id="loadGuideBtn">Load Guide Image</button>
+        </div>
+
+        <div class="image-info" id="imageInfo">
+            <h3>Image Information</h3>
+            <div id="imageDimensions">Dimensions: Not available</div>
+            <div id="imageResolution">Resolution: Not available</div>
+            <div id="imageDepth">Bit Depth: Not available</div>
         </div>
 
         <div class="legend">
@@ -306,6 +330,10 @@
                 <input type="checkbox" id="showAllCircles" checked>
                 <label for="showAllCircles">Show all detected circles</label>
             </div>
+            <div class="detection-option">
+                <input type="checkbox" id="standardizeImages" checked>
+                <label for="standardizeImages">Standardize uploaded images (1200x1131)</label>
+            </div>
         </div>
 
         <div class="slider-container">
@@ -318,6 +346,28 @@
                 <span class="slider-label">100% Circle (Blue):</span>
                 <input type="range" id="outerRadiusSlider" min="3.0" max="100.0" step="0.1" value="21.2">
                 <span id="outerRadiusValue" class="slider-value">21.2x</span>
+            </div>
+        </div>
+
+        <div class="auto-arc-controls">
+            <h3>Automatic Arc Placement</h3>
+            <div class="angle-input">
+                <label for="autoAngleSelect">Preset Angles:</label>
+                <select id="autoAngleSelect">
+                    <option value="0">Top (0°)</option>
+                    <option value="90">Right (90°)</option>
+                    <option value="180">Bottom (180°)</option>
+                    <option value="270">Left (270°)</option>
+                    <option value="45">Top-Right (45°)</option>
+                    <option value="135">Bottom-Right (135°)</option>
+                    <option value="225">Bottom-Left (225°)</option>
+                    <option value="315">Top-Left (315°)</option>
+                </select>
+                <button id="applyAutoAngleBtn">Apply</button>
+            </div>
+            <div class="detection-option">
+                <input type="checkbox" id="autoPlaceArc" checked>
+                <label for="autoPlaceArc">Automatically place arc on image load</label>
             </div>
         </div>
 
@@ -393,6 +443,7 @@
         let fileInput = document.getElementById('fileInput');
         let processBtn = document.getElementById('processBtn');
         let simpleDetectBtn = document.getElementById('simpleDetectBtn');
+        let autoArcBtn = document.getElementById('autoArcBtn');
         let resetBtn = document.getElementById('resetBtn');
         let downloadBtn = document.getElementById('downloadBtn');
         let debugBtn = document.getElementById('debugBtn');
@@ -407,6 +458,7 @@
         let innerRadiusValue = document.getElementById('innerRadiusValue');
         let outerRadiusValue = document.getElementById('outerRadiusValue');
         let showAllCircles = document.getElementById('showAllCircles');
+        let standardizeImages = document.getElementById('standardizeImages');
         let detectionResults = document.getElementById('detectionResults');
         let centerResult = document.getElementById('centerResult');
         let innerResult = document.getElementById('innerResult');
@@ -424,6 +476,13 @@
         let setTimeBtn = document.getElementById('setTimeBtn');
         let progressContainer = document.getElementById('progressContainer');
         let progressBar = document.getElementById('progressBar');
+        let autoAngleSelect = document.getElementById('autoAngleSelect');
+        let applyAutoAngleBtn = document.getElementById('applyAutoAngleBtn');
+        let autoPlaceArc = document.getElementById('autoPlaceArc');
+        let imageInfo = document.getElementById('imageInfo');
+        let imageDimensions = document.getElementById('imageDimensions');
+        let imageResolution = document.getElementById('imageResolution');
+        let imageDepth = document.getElementById('imageDepth');
         
         // Chart parameters
         let chartCenter = { x: 621, y: 565 }; // Fixed center coordinates
@@ -441,6 +500,12 @@
         let lineColor = '#000000';
         let curvatureIntensity = 0.7; // Default curve intensity (0-1)
         let detectedCircles = []; // Array to store all detected circles
+        
+        // Standard image dimensions (matching example image)
+        const standardWidth = 1200;
+        const standardHeight = 1131;
+        const standardDPI = 96;
+        const standardBitDepth = 32;
         
         // OpenCV ready flag
         let isOpenCvReady = false;
@@ -511,6 +576,13 @@
                 statusMessage.textContent = 'Detecting circles using simple method...';
                 logDebug('Simple circle detection button clicked');
                 setTimeout(detectCirclesSimple, 100);
+            });
+            
+            // Auto arc button click event
+            autoArcBtn.addEventListener('click', function() {
+                statusMessage.textContent = 'Automatically placing arc...';
+                logDebug('Auto arc button clicked');
+                setTimeout(autoPlaceArcLine, 100);
             });
             
             // Reset button click event
@@ -592,6 +664,17 @@
                 }
             });
             
+            // Auto angle select events
+            applyAutoAngleBtn.addEventListener('click', function() {
+                const angle = parseFloat(autoAngleSelect.value);
+                if (!isNaN(angle)) {
+                    currentAngle = angle;
+                    angleInput.value = angle;
+                    updateMeasurementLine();
+                    logDebug(`Auto angle set to ${angle}°`);
+                }
+            });
+            
             // Line width input event
             lineWidthInput.addEventListener('input', function() {
                 lineWidth = parseInt(this.value);
@@ -644,6 +727,34 @@
             logDebug('Application initialized');
         }
         
+        // Automatically place arc line based on image analysis
+        function autoPlaceArcLine() {
+            if (!originalImage) {
+                statusMessage.textContent = 'No image loaded. Please upload an image first.';
+                statusMessage.className = 'status error';
+                return;
+            }
+            
+            try {
+                // For now, we'll use a simple approach - place at the default angle from autoAngleSelect
+                const angle = parseFloat(autoAngleSelect.value);
+                if (!isNaN(angle)) {
+                    currentAngle = angle;
+                    angleInput.value = angle;
+                    updateMeasurementLine();
+                    
+                    statusMessage.textContent = `Arc automatically placed at ${angle}°`;
+                    statusMessage.className = 'status success';
+                    logDebug(`Auto arc placed at angle: ${angle}°`);
+                }
+            } catch (err) {
+                console.error("Error placing arc:", err);
+                logDebug(`Error placing arc: ${err.message}`);
+                statusMessage.textContent = `Error placing arc: ${err.message}`;
+                statusMessage.className = 'status error';
+            }
+        }
+        
         // Update the measurement line based on current angle
         function updateMeasurementLine() {
             if (!originalImage) return;
@@ -687,6 +798,11 @@
                 img.onload = function() {
                     logDebug(`${type} image loaded successfully`);
                     
+                    // Update image info
+                    imageDimensions.textContent = `Dimensions: ${img.width} x ${img.height}`;
+                    imageResolution.textContent = `Resolution: ${standardDPI} DPI (standard)`;
+                    imageDepth.textContent = `Bit Depth: ${standardBitDepth} bit (standard)`;
+                    
                     // Resize canvas to match image dimensions
                     inputCanvas.width = img.width;
                     inputCanvas.height = img.height;
@@ -705,6 +821,7 @@
                     // Enable buttons
                     processBtn.disabled = false;
                     simpleDetectBtn.disabled = false;
+                    autoArcBtn.disabled = false;
                     resetBtn.disabled = false;
                     
                     // Set up detection results with the fixed values
@@ -718,6 +835,11 @@
                     
                     // Draw the result
                     drawResult();
+                    
+                    // Auto place arc if enabled
+                    if (autoPlaceArc.checked) {
+                        autoPlaceArcLine();
+                    }
                     
                     // Enable download button
                     downloadBtn.disabled = false;
@@ -757,29 +879,62 @@
                     logDebug(`Image loaded: ${img.width}x${img.height}`);
                     
                     try {
-                        // Resize canvas to match image dimensions
-                        inputCanvas.width = img.width;
-                        inputCanvas.height = img.height;
-                        outputCanvas.width = img.width;
-                        outputCanvas.height = img.height;
+                        // Check if we need to standardize the image
+                        if (standardizeImages.checked) {
+                            logDebug(`Standardizing image to ${standardWidth}x${standardHeight}`);
+                            
+                            // Create a temporary canvas for resizing
+                            const tempCanvas = document.createElement('canvas');
+                            tempCanvas.width = standardWidth;
+                            tempCanvas.height = standardHeight;
+                            const tempCtx = tempCanvas.getContext('2d');
+                            
+                            // Draw and resize the image
+                            tempCtx.drawImage(img, 0, 0, standardWidth, standardHeight);
+                            
+                            // Update image info
+                            imageDimensions.textContent = `Dimensions: ${standardWidth} x ${standardHeight} (standardized)`;
+                            imageResolution.textContent = `Resolution: ${standardDPI} DPI (standard)`;
+                            imageDepth.textContent = `Bit Depth: ${standardBitDepth} bit (standard)`;
+                            
+                            // Resize canvas to match standard dimensions
+                            inputCanvas.width = standardWidth;
+                            inputCanvas.height = standardHeight;
+                            outputCanvas.width = standardWidth;
+                            outputCanvas.height = standardHeight;
+                            
+                            // Draw standardized image on input canvas
+                            inputCtx.drawImage(tempCanvas, 0, 0);
+                        } else {
+                            // Update image info with original dimensions
+                            imageDimensions.textContent = `Dimensions: ${img.width} x ${img.height} (original)`;
+                            imageResolution.textContent = `Resolution: Unknown (using original)`;
+                            imageDepth.textContent = `Bit Depth: Unknown (using original)`;
+                            
+                            // Resize canvas to match image dimensions
+                            inputCanvas.width = img.width;
+                            inputCanvas.height = img.height;
+                            outputCanvas.width = img.width;
+                            outputCanvas.height = img.height;
+                            
+                            // Draw image on input canvas
+                            inputCtx.drawImage(img, 0, 0);
+                        }
                         
                         logDebug(`Canvas resized to ${inputCanvas.width}x${inputCanvas.height}`);
-                        
-                        // Draw image on input canvas
-                        inputCtx.drawImage(img, 0, 0);
-                        logDebug('Image drawn on input canvas');
                         
                         // Store original image
                         originalImage = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
                         logDebug('Original image data stored');
                         
                         // Draw image on output canvas
-                        outputCtx.drawImage(img, 0, 0);
+                        outputCtx.drawImage(inputCanvas, 0, 0);
                         logDebug('Image drawn on output canvas');
                         
                         // Enable buttons
                         processBtn.disabled = false;
                         simpleDetectBtn.disabled = false;
+                        autoArcBtn.disabled = false;
                         resetBtn.disabled = false;
                         
                         // Set up detection results with the fixed values
@@ -793,6 +948,11 @@
                         
                         // Draw the result
                         drawResult();
+                        
+                        // Auto place arc if enabled
+                        if (autoPlaceArc.checked) {
+                            autoPlaceArcLine();
+                        }
                         
                         // Enable download button
                         downloadBtn.disabled = false;
